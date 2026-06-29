@@ -17,8 +17,8 @@ describe("messages", () => {
   });
 
   it("uses predictable scheduled prompts by daypart", () => {
-    expect(buildScheduledConversationPrompt(10).prompt).toContain("most intentional attention");
-    expect(buildScheduledConversationPrompt(13).prompt).toContain("Midday check");
-    expect(buildScheduledConversationPrompt(16).prompt).toContain("Before the day closes");
+    expect(buildScheduledConversationPrompt(10).prompt).toContain("before 1:00");
+    expect(buildScheduledConversationPrompt(13).prompt).toContain("before 2:00 or 4:00");
+    expect(buildScheduledConversationPrompt(16).prompt).toContain("push to 6:00");
   });
 });

@@ -7,7 +7,7 @@ It replaces the narrow Manus-era bot with a clean service that can:
 - welcome new Discord members
 - recognize Contractor Circle roles
 - post a morning message
-- keep the room active with scheduled conversation prompts
+- keep the room active with scheduled conversation prompts that can be AI-generated around practical daypart goals
 - accept call transcript/notes webhooks and post a recap
 - support slash commands for manual recaps, prompts, and leaderboards
 - track activity in a local JSON store as a foundation for future leaderboards
@@ -81,6 +81,16 @@ The bot will generate a concise recap and a discussion question, then post it to
 - `/prompt` posts a conversation starter
 - `/leaderboard` shows recent activity
 - `/goodmorning` posts the daily morning message
+
+## Scheduled Prompt Cadence
+
+By default, scheduled daytime prompts use OpenAI with fixed guardrails:
+
+- late morning: the morning is almost over; push well to 1:00
+- after lunch: lunch is over; push to 2:00 or 4:00
+- late afternoon: get a coffee if needed; push to 6:00
+
+Set `SCHEDULED_PROMPTS_USE_AI=false` to use the fixed fallback prompts instead.
 
 ## Deployment Notes
 

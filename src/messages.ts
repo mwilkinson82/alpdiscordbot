@@ -53,21 +53,45 @@ export function buildFallbackPrompt(): ConversationPrompt {
 export function buildScheduledConversationPrompt(hour: number): ConversationPrompt {
   if (hour < 12) {
     return {
-      prompt: "What is the one thing on your plate today that needs the most intentional attention?",
+      prompt: "The morning is almost over. What is the one thing you need to move before 1:00 so the day does not get away from you?",
       reason: "Morning operating-focus prompt.",
     };
   }
 
   if (hour < 15) {
     return {
-      prompt: "Midday check: where is the day starting to pull you off plan: schedule, crew handoff, estimate, client communication, or cash?",
+      prompt: "Lunch is over. What needs to be handled before 2:00 or 4:00: schedule, crew handoff, estimate, client communication, or cash?",
       reason: "Midday drift-check prompt.",
     };
   }
 
   return {
-    prompt: "Before the day closes, what did you learn, fix, or catch today that another contractor could benefit from?",
+    prompt: "Grab a coffee if you need it. What is the one business move that would make the push to 6:00 count?",
     reason: "End-of-day learning prompt.",
+  };
+}
+
+export function scheduledPromptBrief(hour: number) {
+  if (hour < 12) {
+    return {
+      daypart: "late morning",
+      anchor: "The morning is almost over. Push well to 1:00.",
+      objective: "Help contractors pick the one business or jobsite priority that must move before lunch.",
+    };
+  }
+
+  if (hour < 15) {
+    return {
+      daypart: "after lunch",
+      anchor: "Lunch is over. Push to 2:00 or 4:00.",
+      objective: "Help contractors regain control of the day and name the operational issue to handle next.",
+    };
+  }
+
+  return {
+    daypart: "late afternoon",
+    anchor: "Get a coffee if needed. Push to 6:00.",
+    objective: "Help contractors close the day with one useful business move, lesson, or fix.",
   };
 }
 

@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import type { AppConfig } from "./config.js";
 import { logger } from "./logger.js";
-import { buildFallbackPrompt } from "./messages.js";
+import { buildFallbackPrompt, buildScheduledConversationPrompt, scheduledPromptBrief } from "./messages.js";
 import type { CallRecap, CallRecapInput, ConversationPrompt } from "./types.js";
 
 const recapSchema = {
@@ -127,6 +127,60 @@ export class AiService {
     });
 
     return parseJsonResponse<ConversationPrompt>(response.output_text, "conversation prompt");
+  }
+
+  async generateScheduledConversationPrompt(context: {
+    hour: number;
+    activeUserCount: number;
+    dateText: string;
+  }): Promise<ConversationPrompt> {
+    const brief = scheduledPromptBrief(context.hour);
+    const fallback = buildScheduledConversationPrompt(context.hour);
+
+    if (!this.client) {
+      return fallback;
+    }
+
+    try {
+      const response = await this.client.responses.create({
+        model: this.appConfig.openai.model,
+        reasoning: { effort: this.appConfig.openai.reasoningEffort } as any,
+        text: {
+          verbosity: this.appConfig.openai.verbosity,
+          format: {
+            type: "json_schema",
+            name: "contractor_circle_scheduled_prompt",
+            strict: true,
+            schema: promptSchema,
+          },
+        } as any,
+        input: [
+          {
+            role: "system",
+            content: [
+              "Create one short scheduled Discord prompt for ALP Contractor Circle.",
+              "The goal is to help contractors have a great day by pushing the next work block with intention.",
+              "Keep it practical, business-focused, direct, and human. No hype, no generic motivation, no long coaching paragraph.",
+              "Use the time-block anchor, but vary the wording day to day.",
+              "Good topics: schedule, crew handoff, estimating, client communication, cash, leadership, priorities, jobsite follow-through, one next action.",
+            ].join(" "),
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              ...context,
+              ...brief,
+              fallbackPrompt: fallback.prompt,
+            }),
+          },
+        ],
+      });
+
+      return parseJsonResponse<ConversationPrompt>(response.output_text, "scheduled conversation prompt");
+    } catch (error: any) {
+      logger.warn("AI scheduled prompt failed; using fixed fallback.", error?.message);
+      return fallback;
+    }
   }
 }
 

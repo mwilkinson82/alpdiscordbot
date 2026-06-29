@@ -102,7 +102,7 @@ export class ContractorCircleBot {
     const prompt =
       scheduledHour === undefined
         ? await this.generateAiConversationPrompt()
-        : buildScheduledConversationPrompt(scheduledHour);
+        : await this.generateScheduledConversationPrompt(scheduledHour);
     const message = await channel.send(buildPromptPost(prompt));
     await this.store.recordPost({
       id: message.id,
@@ -221,6 +221,23 @@ export class ContractorCircleBot {
     }).format(new Date());
     const recent = await this.store.recentActiveUsers(this.appConfig.schedule.recentActivityLookbackMinutes);
     return this.ai.generateConversationPrompt({
+      activeUserCount: recent.length,
+      dateText,
+    });
+  }
+
+  private async generateScheduledConversationPrompt(hour: number) {
+    if (!this.appConfig.schedule.useAiScheduledPrompts) {
+      return buildScheduledConversationPrompt(hour);
+    }
+
+    const dateText = new Intl.DateTimeFormat("en-US", {
+      dateStyle: "full",
+      timeZone: this.appConfig.schedule.timezone,
+    }).format(new Date());
+    const recent = await this.store.recentActiveUsers(this.appConfig.schedule.recentActivityLookbackMinutes);
+    return this.ai.generateScheduledConversationPrompt({
+      hour,
       activeUserCount: recent.length,
       dateText,
     });
