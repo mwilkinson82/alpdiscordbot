@@ -20,7 +20,15 @@ It replaces the narrow Manus-era bot with a clean service that can:
    npm install
    ```
 
-2. Create a local env file:
+2. Open the local setup page:
+
+   ```bash
+   npm run setup:env
+   ```
+
+   This opens a browser form that saves `.env.local` for you.
+
+   Or create a local env file manually:
 
    ```bash
    cp .env.example .env.local
