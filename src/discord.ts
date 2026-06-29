@@ -29,13 +29,17 @@ export class ContractorCircleBot {
     private readonly store: ActivityStore,
     private readonly ai: AiService,
   ) {
+    const intents = [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMembers,
+      GatewayIntentBits.GuildMessages,
+    ];
+    if (appConfig.discord.enableMessageContentIntent) {
+      intents.push(GatewayIntentBits.MessageContent);
+    }
+
     this.client = new Client({
-      intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-      ],
+      intents,
     });
   }
 

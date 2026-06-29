@@ -30,6 +30,7 @@ const envSchema = z.object({
   MORNING_POST_HOUR: z.coerce.number().int().min(0).max(23).default(8),
   DAYTIME_PROMPT_HOURS: z.string().optional().default("10,13,16"),
   ENABLE_WEEKEND_POSTS: boolFromEnv.default(false),
+  DISCORD_ENABLE_MESSAGE_CONTENT_INTENT: boolFromEnv.default(false),
   DATA_DIR: z.string().min(1).default("./data"),
   WELCOME_DEDUP_MINUTES: z.coerce.number().int().positive().default(5),
   RECENT_ACTIVITY_LOOKBACK_MINUTES: z.coerce.number().int().positive().default(180),
@@ -61,6 +62,7 @@ export const config = {
     announcementsChannelId: parsed.DISCORD_ANNOUNCEMENTS_CHANNEL_ID || parsed.DISCORD_GENERAL_CHANNEL_ID,
     contractorCircleRoleIds: csv(parsed.CONTRACTOR_CIRCLE_ROLE_IDS),
     contractorCircleRoleNames: csv(parsed.CONTRACTOR_CIRCLE_ROLE_NAMES).map((name) => name.toLowerCase()),
+    enableMessageContentIntent: parsed.DISCORD_ENABLE_MESSAGE_CONTENT_INTENT,
   },
   openai: {
     apiKey: parsed.OPENAI_API_KEY,

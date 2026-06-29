@@ -53,8 +53,10 @@ It replaces the narrow Manus-era bot with a clean service that can:
 
 The bot needs these permissions and intents:
 
-- Gateway intents: `Guilds`, `Guild Members`, `Guild Messages`, `Message Content`
+- Gateway intents: `Guilds`, `Guild Members`, `Guild Messages`
 - Bot permissions: send messages, read message history, use slash commands, manage roles if assigning Contractor Circle roles
+
+Enable **Server Members Intent** in the Discord Developer Portal so the bot can welcome new members. Message Content Intent is optional and off by default.
 
 If role assignment fails, move the bot role above the Contractor Circle role in Discord's role list.
 
