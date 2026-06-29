@@ -105,6 +105,34 @@ export function buildPromptPost(prompt: ConversationPrompt) {
   ].join("\n");
 }
 
+export function buildCallRecapTitle(title: string | undefined, headline: string) {
+  const cleanTitle = title?.trim();
+  const cleanHeadline = headline.trim();
+  if (!cleanTitle) return `Call recap: ${cleanHeadline}`;
+
+  if (/power hour/i.test(cleanTitle)) {
+    return `Power Hour recap: ${cleanHeadline}`;
+  }
+
+  if (/recap/i.test(cleanTitle)) {
+    return `${cleanTitle}: ${cleanHeadline}`;
+  }
+
+  return `Call recap: ${cleanTitle}`;
+}
+
+export function ensureCallRecapContext(content: string, title: string | undefined, headline: string) {
+  const trimmed = content.trim();
+  const contextualTitle = buildCallRecapTitle(title, headline);
+  const firstLine = trimmed.split(/\r?\n/, 1)[0]?.trim() ?? "";
+
+  if (/recap/i.test(firstLine) || firstLine.toLowerCase() === contextualTitle.toLowerCase()) {
+    return trimmed;
+  }
+
+  return [contextualTitle, "", trimmed].join("\n");
+}
+
 export function buildCallRecapPost(recap: CallRecap) {
   const keyPoints = recap.keyPoints.slice(0, 4).map((point) => `- ${point}`).join("\n");
   return [

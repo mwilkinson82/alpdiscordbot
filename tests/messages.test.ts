@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildMorningMessage, buildScheduledConversationPrompt, buildWelcomeMessage } from "../src/messages.js";
+import {
+  buildMorningMessage,
+  buildScheduledConversationPrompt,
+  buildWelcomeMessage,
+  ensureCallRecapContext,
+} from "../src/messages.js";
 
 describe("messages", () => {
   it("builds the requested morning message shape", () => {
@@ -20,5 +25,14 @@ describe("messages", () => {
     expect(buildScheduledConversationPrompt(10).prompt).toContain("before 1:00");
     expect(buildScheduledConversationPrompt(13).prompt).toContain("before 2:00 or 4:00");
     expect(buildScheduledConversationPrompt(16).prompt).toContain("push to 6:00");
+  });
+
+  it("keeps call recap context even when AI omits it", () => {
+    const message = ensureCallRecapContext(
+      "Default is expensive.\n\nThis week's filter is simple.",
+      "Monday Power Hour: Default Is Expensive",
+      "Default Is Expensive",
+    );
+    expect(message.startsWith("Power Hour recap: Default Is Expensive")).toBe(true);
   });
 });

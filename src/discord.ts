@@ -16,6 +16,7 @@ import {
   buildPromptPost,
   buildScheduledConversationPrompt,
   buildWelcomeMessage,
+  ensureCallRecapContext,
 } from "./messages.js";
 import type { ActivityStore } from "./activityStore.js";
 import type { AiService } from "./ai.js";
@@ -115,7 +116,8 @@ export class ContractorCircleBot {
   async postCallRecap(input: CallRecapInput) {
     const recap = await this.ai.generateCallRecap(input);
     const channel = input.channelId ? await this.getTextChannel(input.channelId) : await this.getAnnouncementChannel();
-    const content = recap.suggestedPost?.trim() || buildCallRecapPost(recap);
+    const generatedContent = recap.suggestedPost?.trim() || buildCallRecapPost(recap);
+    const content = ensureCallRecapContext(generatedContent, input.title, recap.headline);
     const message = await channel.send(content);
     await this.store.recordPost({
       id: message.id,
