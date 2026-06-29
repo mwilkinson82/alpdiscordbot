@@ -6,6 +6,7 @@ import {
   type ChatInputCommandInteraction,
   type GuildMember,
   type Message,
+  type MessageCreateOptions,
   type TextBasedChannel,
 } from "discord.js";
 import type { AppConfig } from "./config.js";
@@ -24,7 +25,7 @@ import type { ActivityWindow, CallRecapInput } from "./types.js";
 
 type SendableTextChannel = TextBasedChannel & {
   id: string;
-  send(content: string): Promise<Message>;
+  send(content: string | MessageCreateOptions): Promise<Message>;
 };
 
 export class ContractorCircleBot {
@@ -128,6 +129,27 @@ export class ContractorCircleBot {
     return { message, recap };
   }
 
+  async postRawMessage(channelId: string, content: string, mentionUserIds: string[] = []) {
+    const channel = await this.getTextChannel(channelId);
+    return channel.send({
+      content,
+      allowedMentions: { users: mentionUserIds },
+    });
+  }
+
+  async recordTargetedPrompt(input: {
+    targetUserId: string;
+    targetName: string;
+    channelId: string;
+    messageId: string;
+    promptText: string;
+  }) {
+    return this.store.recordTargetedPrompt({
+      ...input,
+      responseWindowHours: this.appConfig.assistant.targetedPromptResponseHours,
+    });
+  }
+
   private async handleGuildMemberAdd(member: GuildMember) {
     if (member.guild.id !== this.appConfig.discord.guildId) return;
     if (this.wasRecentlyWelcomed(member.id)) {
@@ -176,6 +198,7 @@ export class ContractorCircleBot {
       contractorCircleMember: member ? this.isContractorCircleMember(member) : undefined,
     });
 
+    await this.maybeReplyToTargetedPrompt(message);
     await this.maybeReplyAsAssistant(message);
   }
 
@@ -254,6 +277,32 @@ export class ContractorCircleBot {
       authorName: member?.displayName || message.author.displayName || message.author.username,
       channelName: "name" in message.channel ? (message.channel.name ?? undefined) : undefined,
       referencedBotMessage: reference?.content,
+    });
+
+    await message.reply({
+      content: safeDiscordContent(reply),
+      allowedMentions: { repliedUser: false },
+    });
+  }
+
+  private async maybeReplyToTargetedPrompt(message: Message) {
+    if (!this.appConfig.assistant.repliesEnabled) return;
+    const pending = await this.store.pendingTargetedPromptFor(message.author.id, message.channelId);
+    if (!pending) return;
+
+    const cacheKey = `targeted:${message.author.id}:${message.channelId}`;
+    const lastReply = this.assistantReplyCache.get(cacheKey);
+    const cooldownMs = this.appConfig.assistant.replyCooldownSeconds * 1000;
+    if (lastReply && cooldownMs > 0 && Date.now() - lastReply < cooldownMs) return;
+    this.assistantReplyCache.set(cacheKey, Date.now());
+    await this.store.markTargetedPromptResponded(pending.id);
+
+    const member = message.member;
+    const reply = await this.ai.generateAssistantReply({
+      message: message.content || "",
+      authorName: member?.displayName || message.author.displayName || message.author.username,
+      channelName: "name" in message.channel ? (message.channel.name ?? undefined) : undefined,
+      referencedBotMessage: pending.promptText,
     });
 
     await message.reply({

@@ -12,6 +12,13 @@ const callRecapSchema = z.object({
   channelId: z.string().optional(),
 });
 
+const targetedPromptSchema = z.object({
+  targetUserId: z.string().min(1),
+  targetName: z.string().min(1),
+  content: z.string().min(1),
+  channelId: z.string().optional(),
+});
+
 export function startHttpServer(appConfig: AppConfig, bot: ContractorCircleBot) {
   const app = express();
   app.use(express.json({ limit: "2mb" }));
@@ -48,6 +55,35 @@ export function startHttpServer(appConfig: AppConfig, bot: ContractorCircleBot) 
     } catch (error: any) {
       logger.error("Call recap webhook failed.", error?.message);
       res.status(500).json({ ok: false, error: "Call recap failed" });
+    }
+  });
+
+  app.post("/webhooks/targeted-prompt", async (req, res) => {
+    if (!isAuthorized(appConfig, req.header("x-webhook-secret"))) {
+      res.status(401).json({ ok: false, error: "Unauthorized" });
+      return;
+    }
+
+    const parsed = targetedPromptSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ ok: false, error: parsed.error.flatten() });
+      return;
+    }
+
+    try {
+      const channelId = parsed.data.channelId || appConfig.discord.generalChannelId;
+      const message = await bot.postRawMessage(channelId, parsed.data.content, [parsed.data.targetUserId]);
+      await bot.recordTargetedPrompt({
+        targetUserId: parsed.data.targetUserId,
+        targetName: parsed.data.targetName,
+        channelId,
+        messageId: message.id,
+        promptText: parsed.data.content,
+      });
+      res.json({ ok: true, messageId: message.id, channelId: message.channelId });
+    } catch (error: any) {
+      logger.error("Targeted prompt webhook failed.", error?.message);
+      res.status(500).json({ ok: false, error: "Targeted prompt failed" });
     }
   });
 

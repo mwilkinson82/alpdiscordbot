@@ -21,6 +21,19 @@ export interface ActivityStoreState {
     createdAt: string;
     userId?: string;
   }>;
+  targetedPrompts: TargetedPrompt[];
+}
+
+export interface TargetedPrompt {
+  id: string;
+  targetUserId: string;
+  targetName: string;
+  channelId: string;
+  messageId: string;
+  promptText: string;
+  createdAt: string;
+  expiresAt: string;
+  respondedAt?: string;
 }
 
 export interface CallRecapInput {

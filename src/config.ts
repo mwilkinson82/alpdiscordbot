@@ -34,6 +34,7 @@ const envSchema = z.object({
   SCHEDULED_PROMPTS_USE_AI: boolFromEnv.default(true),
   ASSISTANT_REPLIES_ENABLED: boolFromEnv.default(true),
   ASSISTANT_REPLY_COOLDOWN_SECONDS: z.coerce.number().int().nonnegative().default(20),
+  TARGETED_PROMPT_RESPONSE_HOURS: z.coerce.number().int().positive().default(24),
   DATA_DIR: z.string().min(1).default("./data"),
   WELCOME_DEDUP_MINUTES: z.coerce.number().int().positive().default(5),
   RECENT_ACTIVITY_LOOKBACK_MINUTES: z.coerce.number().int().positive().default(180),
@@ -89,6 +90,7 @@ export const config = {
   assistant: {
     repliesEnabled: parsed.ASSISTANT_REPLIES_ENABLED,
     replyCooldownSeconds: parsed.ASSISTANT_REPLY_COOLDOWN_SECONDS,
+    targetedPromptResponseHours: parsed.TARGETED_PROMPT_RESPONSE_HOURS,
   },
   dataDir: parsed.DATA_DIR,
   welcomeDedupMinutes: parsed.WELCOME_DEDUP_MINUTES,

@@ -1,11 +1,12 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ActivityRecord, ActivityStoreState, ActivityWindow } from "./types.js";
+import type { ActivityRecord, ActivityStoreState, ActivityWindow, TargetedPrompt } from "./types.js";
 import { logger } from "./logger.js";
 
 const emptyState = (): ActivityStoreState => ({
   users: {},
   posts: [],
+  targetedPrompts: [],
 });
 
 export class ActivityStore {
@@ -23,6 +24,7 @@ export class ActivityStore {
     try {
       const raw = await readFile(this.filePath, "utf8");
       this.state = JSON.parse(raw) as ActivityStoreState;
+      this.state.targetedPrompts ??= [];
     } catch (error: any) {
       if (error?.code !== "ENOENT") {
         logger.warn("Could not read activity store; starting fresh.", error?.message);
@@ -112,6 +114,55 @@ export class ActivityStore {
       return post.kind === "morning" || post.kind === "prompt" || post.kind === "call-recap";
     });
     return last ? new Date(last.createdAt) : undefined;
+  }
+
+  async recordTargetedPrompt(input: {
+    targetUserId: string;
+    targetName: string;
+    channelId: string;
+    messageId: string;
+    promptText: string;
+    responseWindowHours: number;
+    at?: Date;
+  }) {
+    await this.load();
+    const now = input.at ?? new Date();
+    const prompt: TargetedPrompt = {
+      id: `${input.channelId}:${input.messageId}`,
+      targetUserId: input.targetUserId,
+      targetName: input.targetName,
+      channelId: input.channelId,
+      messageId: input.messageId,
+      promptText: input.promptText,
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + input.responseWindowHours * 60 * 60 * 1000).toISOString(),
+    };
+    this.state.targetedPrompts = [
+      ...this.state.targetedPrompts.filter((item) => item.id !== prompt.id),
+      prompt,
+    ].slice(-100);
+    await this.save();
+    return prompt;
+  }
+
+  async pendingTargetedPromptFor(userId: string, channelId: string, now = new Date()) {
+    await this.load();
+    return [...this.state.targetedPrompts].reverse().find((prompt) => {
+      return (
+        prompt.targetUserId === userId &&
+        prompt.channelId === channelId &&
+        !prompt.respondedAt &&
+        new Date(prompt.expiresAt).getTime() >= now.getTime()
+      );
+    });
+  }
+
+  async markTargetedPromptResponded(id: string, at = new Date()) {
+    await this.load();
+    const prompt = this.state.targetedPrompts.find((item) => item.id === id);
+    if (!prompt) return;
+    prompt.respondedAt = at.toISOString();
+    await this.save();
   }
 
   async recentActiveUsers(lookbackMinutes: number, now = new Date()) {

@@ -76,6 +76,21 @@ POST to `/webhooks/call-recap` with header `x-webhook-secret: <WEBHOOK_SECRET>`.
 
 The bot will generate a concise recap and a discussion question, then post it to Discord.
 
+## Targeted Prompt Webhook
+
+POST to `/webhooks/targeted-prompt` with header `x-webhook-secret: <WEBHOOK_SECRET>` when ALP Think should ask one member a direct follow-up and watch for their answer.
+
+```json
+{
+  "targetUserId": "1243955897475010652",
+  "targetName": "Caleb Morrow",
+  "content": "<@1243955897475010652> Caleb, how is your IOR going on that project since the meeting?",
+  "channelId": "1484648401483206739"
+}
+```
+
+If the target member responds in that channel within the configured response window, ALP Think can reply in context.
+
 ## Slash Commands
 
 - `/recap` creates a call recap from pasted notes or transcript
