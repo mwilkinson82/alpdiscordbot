@@ -47,6 +47,12 @@ const commands = [
         .addChoices({ name: "Day", value: "day" }, { name: "Week", value: "week" }, { name: "Month", value: "month" })
         .setRequired(false),
     ),
+  new SlashCommandBuilder()
+    .setName("ask")
+    .setDescription("Ask the ALP Assistant a Contractor Circle question.")
+    .addStringOption((option) =>
+      option.setName("question").setDescription("What do you want help thinking through?").setRequired(true).setMaxLength(1000),
+    ),
   new SlashCommandBuilder().setName("goodmorning").setDescription("Post the morning message now."),
 ].map((command) => command.toJSON());
 

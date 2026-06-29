@@ -30,6 +30,7 @@ type SendableTextChannel = TextBasedChannel & {
 export class ContractorCircleBot {
   readonly client: Client;
   private readonly welcomeCache = new Map<string, number>();
+  private readonly assistantReplyCache = new Map<string, number>();
 
   constructor(
     private readonly appConfig: AppConfig,
@@ -174,6 +175,8 @@ export class ContractorCircleBot {
       displayName: member?.displayName || message.author.displayName || message.author.username,
       contractorCircleMember: member ? this.isContractorCircleMember(member) : undefined,
     });
+
+    await this.maybeReplyAsAssistant(message);
   }
 
   private async handleCommand(interaction: ChatInputCommandInteraction) {
@@ -209,10 +212,64 @@ export class ContractorCircleBot {
       return;
     }
 
+    if (interaction.commandName === "ask") {
+      await interaction.deferReply({ ephemeral: false });
+      const question = interaction.options.getString("question", true);
+      const reply = await this.ai.generateAssistantReply({
+        message: question,
+        authorName: interaction.member && "displayName" in interaction.member ? interaction.member.displayName : interaction.user.username,
+        channelName: interaction.channel?.isTextBased() ? interaction.channel.toString() : undefined,
+      });
+      await interaction.editReply(safeDiscordContent(reply));
+      return;
+    }
+
     if (interaction.commandName === "goodmorning") {
       await interaction.deferReply({ ephemeral: true });
       const message = await this.postMorningMessage();
       await interaction.editReply(`Morning message posted in <#${message.channelId}>.`);
+    }
+  }
+
+  private async maybeReplyAsAssistant(message: Message) {
+    if (!this.appConfig.assistant.repliesEnabled || !this.client.user) return;
+
+    const reference = await this.getReferencedBotMessage(message);
+    const mentioned = message.mentions.users.has(this.client.user.id);
+    if (!reference && !mentioned) return;
+
+    const cacheKey = `${message.author.id}:${message.channelId}`;
+    const lastReply = this.assistantReplyCache.get(cacheKey);
+    const cooldownMs = this.appConfig.assistant.replyCooldownSeconds * 1000;
+    if (lastReply && cooldownMs > 0 && Date.now() - lastReply < cooldownMs) {
+      logger.info(`Skipping assistant reply because ${message.author.id} is on cooldown.`);
+      return;
+    }
+    this.assistantReplyCache.set(cacheKey, Date.now());
+
+    const messageText = stripBotMention(message.content || "", this.client.user.id);
+    const member = message.member;
+    const reply = await this.ai.generateAssistantReply({
+      message: messageText,
+      authorName: member?.displayName || message.author.displayName || message.author.username,
+      channelName: "name" in message.channel ? (message.channel.name ?? undefined) : undefined,
+      referencedBotMessage: reference?.content,
+    });
+
+    await message.reply({
+      content: safeDiscordContent(reply),
+      allowedMentions: { repliedUser: false },
+    });
+  }
+
+  private async getReferencedBotMessage(message: Message) {
+    if (!message.reference?.messageId || !this.client.user) return undefined;
+    try {
+      const referenced = await message.fetchReference();
+      return referenced.author.id === this.client.user.id ? referenced : undefined;
+    } catch (error: any) {
+      logger.warn("Could not fetch referenced message for assistant reply.", error?.message);
+      return undefined;
     }
   }
 
@@ -299,4 +356,16 @@ function formatLeaderboard(leaderboard: Array<{ displayName: string; messageCoun
   }
   const rows = leaderboard.map((item, index) => `${index + 1}. ${item.displayName} - ${item.messageCount} messages`);
   return [`Contractor Circle activity leaderboard (${window})`, "", ...rows].join("\n");
+}
+
+function stripBotMention(content: string, botId: string) {
+  return content
+    .replace(new RegExp(`<@!?${botId}>`, "g"), "")
+    .trim();
+}
+
+function safeDiscordContent(content: string) {
+  const trimmed = content.trim() || "I need a little more context to help with that.";
+  if (trimmed.length <= 1900) return trimmed;
+  return `${trimmed.slice(0, 1890).trimEnd()}...`;
 }

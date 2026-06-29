@@ -182,6 +182,48 @@ export class AiService {
       return fallback;
     }
   }
+
+  async generateAssistantReply(context: {
+    message: string;
+    authorName: string;
+    channelName?: string;
+    referencedBotMessage?: string;
+  }): Promise<string> {
+    const message = context.message.trim();
+    if (!message) {
+      return "I saw the reply, but I need a little more to go on. Ask me a specific question or use `/ask` and I’ll help.";
+    }
+
+    if (!this.client) {
+      return fallbackAssistantReply(message);
+    }
+
+    const response = await this.client.responses.create({
+      model: this.appConfig.openai.model,
+      reasoning: { effort: this.appConfig.openai.reasoningEffort } as any,
+      text: { verbosity: this.appConfig.openai.verbosity } as any,
+      max_output_tokens: 320,
+      input: [
+        {
+          role: "system",
+          content: [
+            "You are the ALP Assistant in the ALP Contractor Circle Discord.",
+            "You are not Marshall. Do not claim to be Marshall.",
+            "Help contractors think like owners using the Contractor Circle operating lens.",
+            "Be brief, practical, and direct. Ask a useful follow-up when the member gives a short phrase.",
+            "Focus on business execution, strategy, estimating, scheduling, cash, risk, capacity, leadership, client communication, and staying out of default mode.",
+            "Do not invent specific Contractor Circle source material. If the question requires the private knowledge base, say you can help generally now and that the deeper Ask Marshall library is coming.",
+          ].join(" "),
+        },
+        {
+          role: "user",
+          content: JSON.stringify(context),
+        },
+      ],
+    });
+
+    return cleanAssistantReply(response.output_text);
+  }
 }
 
 function parseJsonResponse<T>(raw: string, label: string): T {
@@ -207,4 +249,18 @@ function fallbackRecap(input: CallRecapInput, source: string): CallRecap {
     discussionQuestion: "What part of this shows up in your business right now?",
     suggestedPost: "",
   };
+}
+
+function fallbackAssistantReply(message: string) {
+  if (message.length < 30) {
+    return `Good. Make it specific: what part of "${message}" are you trying to improve today, and what would count as progress by the end of the day?`;
+  }
+
+  return "Good question. Start with the owner filter: does this make money, reduce risk, or create capacity? If it does, name the next action. If it does not, cut it, delegate it, delay it, simplify it, or systemize it.";
+}
+
+function cleanAssistantReply(reply: string) {
+  const trimmed = reply.trim();
+  if (trimmed.length <= 1800) return trimmed;
+  return `${trimmed.slice(0, 1790).trimEnd()}...`;
 }

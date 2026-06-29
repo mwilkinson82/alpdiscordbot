@@ -9,6 +9,7 @@ It replaces the narrow Manus-era bot with a clean service that can:
 - post a morning message
 - keep the room active with scheduled conversation prompts that can be AI-generated around practical daypart goals
 - accept call transcript/notes webhooks and post a recap
+- answer direct mentions, direct replies, and `/ask` questions as the ALP Assistant
 - support slash commands for manual recaps, prompts, and leaderboards
 - track activity in a local JSON store as a foundation for future leaderboards
 
@@ -81,6 +82,9 @@ The bot will generate a concise recap and a discussion question, then post it to
 - `/prompt` posts a conversation starter
 - `/leaderboard` shows recent activity
 - `/goodmorning` posts the daily morning message
+- `/ask` asks the ALP Assistant a question
+
+The bot only answers when someone mentions it, replies directly to one of its messages, or uses `/ask`.
 
 ## Scheduled Prompt Cadence
 
