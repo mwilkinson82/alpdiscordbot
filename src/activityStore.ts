@@ -106,6 +106,14 @@ export class ActivityStore {
     return last ? new Date(last.createdAt) : undefined;
   }
 
+  async lastCommunityPostAt() {
+    await this.load();
+    const last = [...this.state.posts].reverse().find((post) => {
+      return post.kind === "morning" || post.kind === "prompt" || post.kind === "call-recap";
+    });
+    return last ? new Date(last.createdAt) : undefined;
+  }
+
   async recentActiveUsers(lookbackMinutes: number, now = new Date()) {
     await this.load();
     const cutoff = now.getTime() - lookbackMinutes * 60 * 1000;

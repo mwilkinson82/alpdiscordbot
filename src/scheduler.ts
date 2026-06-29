@@ -25,11 +25,11 @@ export function startScheduler(appConfig: AppConfig, bot: ContractorCircleBot, s
         `0 ${hour} * * *`,
         () => {
           void guarded("conversation prompt", appConfig, async () => {
-            const lastPrompt = await store.lastPostAt("prompt");
-            if (lastPrompt) {
-              const minutesSinceLast = (Date.now() - lastPrompt.getTime()) / 60000;
+            const lastCommunityPost = await store.lastCommunityPostAt();
+            if (lastCommunityPost) {
+              const minutesSinceLast = (Date.now() - lastCommunityPost.getTime()) / 60000;
               if (minutesSinceLast < appConfig.schedule.minMinutesBetweenAutoPrompts) {
-                logger.info("Skipping scheduled prompt because the last prompt was recent.");
+                logger.info("Skipping scheduled prompt because the last community post was recent.");
                 return;
               }
             }
