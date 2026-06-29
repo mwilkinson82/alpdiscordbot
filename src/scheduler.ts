@@ -33,7 +33,7 @@ export function startScheduler(appConfig: AppConfig, bot: ContractorCircleBot, s
                 return;
               }
             }
-            await bot.postConversationPrompt();
+            await bot.postConversationPrompt(undefined, hour);
           });
         },
         { timezone: appConfig.schedule.timezone },

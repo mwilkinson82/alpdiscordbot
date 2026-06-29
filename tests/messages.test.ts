@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMorningMessage, buildWelcomeMessage } from "../src/messages.js";
+import { buildMorningMessage, buildScheduledConversationPrompt, buildWelcomeMessage } from "../src/messages.js";
 
 describe("messages", () => {
   it("builds the requested morning message shape", () => {
@@ -14,5 +14,11 @@ describe("messages", () => {
     expect(message).toContain("<@123>");
     expect(message).toContain("Contractor Circle");
     expect(message).toContain("drop a quick intro");
+  });
+
+  it("uses predictable scheduled prompts by daypart", () => {
+    expect(buildScheduledConversationPrompt(10).prompt).toContain("most intentional attention");
+    expect(buildScheduledConversationPrompt(13).prompt).toContain("Midday check");
+    expect(buildScheduledConversationPrompt(16).prompt).toContain("Before the day closes");
   });
 });

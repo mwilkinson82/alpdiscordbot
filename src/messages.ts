@@ -50,6 +50,27 @@ export function buildFallbackPrompt(): ConversationPrompt {
   };
 }
 
+export function buildScheduledConversationPrompt(hour: number): ConversationPrompt {
+  if (hour < 12) {
+    return {
+      prompt: "What is the one thing on your plate today that needs the most intentional attention?",
+      reason: "Morning operating-focus prompt.",
+    };
+  }
+
+  if (hour < 15) {
+    return {
+      prompt: "Midday check: where is the day starting to pull you off plan: schedule, crew handoff, estimate, client communication, or cash?",
+      reason: "Midday drift-check prompt.",
+    };
+  }
+
+  return {
+    prompt: "Before the day closes, what did you learn, fix, or catch today that another contractor could benefit from?",
+    reason: "End-of-day learning prompt.",
+  };
+}
+
 export function buildPromptPost(prompt: ConversationPrompt) {
   return [
     "Quick check-in for the room:",
