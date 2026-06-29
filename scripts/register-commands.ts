@@ -49,7 +49,7 @@ const commands = [
     ),
   new SlashCommandBuilder()
     .setName("ask")
-    .setDescription("Ask the ALP Assistant a Contractor Circle question.")
+    .setDescription("Ask ALP Think a Contractor Circle question.")
     .addStringOption((option) =>
       option.setName("question").setDescription("What do you want help thinking through?").setRequired(true).setMaxLength(1000),
     ),
