@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import type { AppConfig } from "./config.js";
 import { logger } from "./logger.js";
 import { buildFallbackPrompt, buildScheduledConversationPrompt, scheduledPromptBrief } from "./messages.js";
-import type { CallRecap, CallRecapInput, ConversationPrompt } from "./types.js";
+import type { CallRecap, CallRecapInput, ConversationPrompt, QuizQuestion } from "./types.js";
 
 const recapSchema = {
   type: "object",
@@ -29,6 +29,24 @@ const promptSchema = {
   properties: {
     prompt: { type: "string" },
     reason: { type: "string" },
+  },
+};
+
+const quizSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["topic", "question", "choices", "correctIndex", "explanation"],
+  properties: {
+    topic: { type: "string" },
+    question: { type: "string" },
+    choices: {
+      type: "array",
+      minItems: 4,
+      maxItems: 4,
+      items: { type: "string" },
+    },
+    correctIndex: { type: "integer", minimum: 0, maximum: 3 },
+    explanation: { type: "string" },
   },
 };
 
@@ -226,6 +244,50 @@ export class AiService {
 
     return cleanAssistantReply(response.output_text);
   }
+
+  async generateQuizQuestion(context: {
+    topic?: string;
+    difficulty?: "easy" | "medium" | "hard";
+  }): Promise<Omit<QuizQuestion, "id" | "channelId" | "messageId" | "createdAt" | "expiresAt">> {
+    if (!this.client) {
+      return fallbackQuiz(context.topic);
+    }
+
+    const response = await this.client.responses.create({
+      model: this.appConfig.openai.model,
+      reasoning: { effort: this.appConfig.openai.reasoningEffort } as any,
+      text: {
+        verbosity: this.appConfig.openai.verbosity,
+        format: {
+          type: "json_schema",
+          name: "contractor_circle_quiz",
+          strict: true,
+          schema: quizSchema,
+        },
+      } as any,
+      input: [
+        {
+          role: "system",
+          content: [
+            "Create one multiple-choice quiz question for ALP Contractor Circle.",
+            "The quiz should be useful for contractors, not trivia for trivia's sake.",
+            "Focus on AOS, IOR, project management, estimating, scheduling, risk, change orders, cash, productivity, crew leadership, client communication, and owner thinking.",
+            "Use practical construction/business scenarios when possible.",
+            "Return four answer choices, exactly one correct answer, and a short explanation.",
+          ].join(" "),
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            topic: context.topic || "IOR, AOS, and contractor business execution",
+            difficulty: context.difficulty || "medium",
+          }),
+        },
+      ],
+    });
+
+    return parseJsonResponse(response.output_text, "quiz question");
+  }
 }
 
 function parseJsonResponse<T>(raw: string, label: string): T {
@@ -265,4 +327,19 @@ function cleanAssistantReply(reply: string) {
   const trimmed = reply.trim();
   if (trimmed.length <= 1800) return trimmed;
   return `${trimmed.slice(0, 1790).trimEnd()}...`;
+}
+
+function fallbackQuiz(topic?: string): Omit<QuizQuestion, "id" | "channelId" | "messageId" | "createdAt" | "expiresAt"> {
+  return {
+    topic: topic || "Owner filter",
+    question: "Which question best fits the ALP owner filter before giving a task your best energy?",
+    choices: [
+      "Will this make money, reduce risk, or create capacity?",
+      "Will this keep me busy enough to feel productive?",
+      "Will this be easy to finish today?",
+      "Will this make the team think I am working hard?",
+    ],
+    correctIndex: 0,
+    explanation: "The ALP lens is owner-first: make money, reduce risk, or create capacity. Busy is not the same as progress.",
+  };
 }

@@ -1,0 +1,74 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { ActivityStore } from "../src/activityStore.js";
+
+const dirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+async function makeStore() {
+  const dir = await mkdtemp(path.join(tmpdir(), "alpdiscordbot-"));
+  dirs.push(dir);
+  const store = new ActivityStore(dir);
+  await store.load();
+  return store;
+}
+
+describe("ActivityStore quiz and activity tracking", () => {
+  it("records quiz attempts and leaderboard points", async () => {
+    const store = await makeStore();
+    const quiz = await store.recordQuiz({
+      id: "quiz-1",
+      channelId: "channel-1",
+      topic: "IOR",
+      question: "What should IOR surface first?",
+      choices: ["Risk and money", "Busy work", "Random tasks", "Color coding"],
+      correctIndex: 0,
+      explanation: "IOR should expose project risk and bottom-line impact.",
+      ttlHours: 1,
+    });
+
+    const result = await store.recordQuizAttempt({
+      quizId: quiz.id,
+      userId: "user-1",
+      username: "caleb",
+      displayName: "Caleb",
+      choiceIndex: 0,
+    });
+
+    expect(result.alreadyAnswered).toBe(false);
+    expect(result.attempt.correct).toBe(true);
+
+    const leaderboard = await store.quizLeaderboard("week");
+    expect(leaderboard[0]).toMatchObject({
+      displayName: "Caleb",
+      points: 1,
+      correct: 1,
+      attempts: 1,
+    });
+  });
+
+  it("estimates active time from member activity events", async () => {
+    const store = await makeStore();
+    await store.recordMessage({
+      userId: "user-1",
+      username: "caleb",
+      displayName: "Caleb",
+      at: new Date("2026-06-29T12:00:00.000Z"),
+    });
+    await store.recordMessage({
+      userId: "user-1",
+      username: "caleb",
+      displayName: "Caleb",
+      at: new Date("2026-06-29T12:07:00.000Z"),
+    });
+
+    const leaderboard = await store.activeTimeLeaderboard("day");
+    expect(leaderboard[0]?.displayName).toBe("Caleb");
+    expect(leaderboard[0]?.estimatedMinutes).toBeGreaterThanOrEqual(8);
+  });
+});

@@ -19,6 +19,12 @@ const targetedPromptSchema = z.object({
   channelId: z.string().optional(),
 });
 
+const quizSchema = z.object({
+  topic: z.string().optional(),
+  difficulty: z.enum(["easy", "medium", "hard"]).optional(),
+  channelId: z.string().optional(),
+});
+
 export function startHttpServer(appConfig: AppConfig, bot: ContractorCircleBot) {
   const app = express();
   app.use(express.json({ limit: "2mb" }));
@@ -84,6 +90,32 @@ export function startHttpServer(appConfig: AppConfig, bot: ContractorCircleBot) 
     } catch (error: any) {
       logger.error("Targeted prompt webhook failed.", error?.message);
       res.status(500).json({ ok: false, error: "Targeted prompt failed" });
+    }
+  });
+
+  app.post("/webhooks/quiz", async (req, res) => {
+    if (!isAuthorized(appConfig, req.header("x-webhook-secret"))) {
+      res.status(401).json({ ok: false, error: "Unauthorized" });
+      return;
+    }
+
+    const parsed = quizSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ ok: false, error: parsed.error.flatten() });
+      return;
+    }
+
+    try {
+      const result = await bot.postQuiz(parsed.data);
+      res.json({
+        ok: true,
+        quizId: result.quiz.id,
+        messageId: result.message.id,
+        channelId: result.message.channelId,
+      });
+    } catch (error: any) {
+      logger.error("Quiz webhook failed.", error?.message);
+      res.status(500).json({ ok: false, error: "Quiz failed" });
     }
   });
 

@@ -12,6 +12,8 @@ It replaces the narrow Manus-era bot with a clean service that can:
 - answer direct mentions, direct replies, and `/ask` questions as ALP Think
 - support slash commands for manual recaps, prompts, and leaderboards
 - track activity in a local JSON store as a foundation for future leaderboards
+- post construction/business quizzes and track quiz points
+- estimate member active time from messages and quiz participation
 
 ## Setup
 
@@ -91,6 +93,18 @@ POST to `/webhooks/targeted-prompt` with header `x-webhook-secret: <WEBHOOK_SECR
 
 If the target member responds in that channel within the configured response window, ALP Think can reply in context.
 
+## Quiz Webhook
+
+POST to `/webhooks/quiz` with header `x-webhook-secret: <WEBHOOK_SECRET>` to have ALP Think generate and post a quiz.
+
+```json
+{
+  "topic": "IOR and project risk",
+  "difficulty": "medium",
+  "channelId": "1484648401483206739"
+}
+```
+
 ## Slash Commands
 
 - `/recap` creates a call recap from pasted notes or transcript
@@ -98,8 +112,14 @@ If the target member responds in that channel within the configured response win
 - `/leaderboard` shows recent activity
 - `/goodmorning` posts the daily morning message
 - `/ask` asks ALP Think a question
+- `/quiz` posts a construction/business quiz
+- `/answer` answers the latest open quiz in the channel
+- `/quizleaderboard` shows quiz points
+- `/activetime` shows estimated Discord active time
 
 The bot only answers when someone mentions it, replies directly to one of its messages, or uses `/ask`.
+
+`/activetime` is an estimate based on messages and quiz participation windows. Discord does not expose private read time or exact time spent looking at the server.
 
 ## Scheduled Prompt Cadence
 

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   ChannelType,
   Client,
@@ -21,7 +22,7 @@ import {
 } from "./messages.js";
 import type { ActivityStore } from "./activityStore.js";
 import type { AiService } from "./ai.js";
-import type { ActivityWindow, CallRecapInput } from "./types.js";
+import type { ActivityWindow, CallRecapInput, QuizQuestion } from "./types.js";
 
 type SendableTextChannel = TextBasedChannel & {
   id: string;
@@ -113,6 +114,29 @@ export class ContractorCircleBot {
       channelId: channel.id,
     });
     return message;
+  }
+
+  async postQuiz(input: { channelId?: string; topic?: string; difficulty?: "easy" | "medium" | "hard" }) {
+    const channel = input.channelId ? await this.getTextChannel(input.channelId) : await this.getAnnouncementChannel();
+    const quizDraft = await this.ai.generateQuizQuestion({
+      topic: input.topic,
+      difficulty: input.difficulty,
+    });
+    const quizId = randomUUID().slice(0, 8);
+    const message = await channel.send(formatQuizPost({ ...quizDraft, id: quizId }));
+    const quiz = await this.store.recordQuiz({
+      ...quizDraft,
+      id: quizId,
+      channelId: channel.id,
+      messageId: message.id,
+      ttlHours: 12,
+    });
+    await this.store.recordPost({
+      id: message.id,
+      kind: "quiz",
+      channelId: channel.id,
+    });
+    return { message, quiz };
   }
 
   async postCallRecap(input: CallRecapInput) {
@@ -235,6 +259,38 @@ export class ContractorCircleBot {
       return;
     }
 
+    if (interaction.commandName === "quiz") {
+      await interaction.deferReply({ ephemeral: true });
+      const topic = interaction.options.getString("topic") || undefined;
+      const difficulty = (interaction.options.getString("difficulty") || "medium") as "easy" | "medium" | "hard";
+      const channel = interaction.options.getChannel("channel");
+      const channelId = channel?.type === ChannelType.GuildText ? channel.id : undefined;
+      const result = await this.postQuiz({ topic, difficulty, channelId });
+      await interaction.editReply(`Quiz posted in <#${result.message.channelId}>. Quiz ID: ${result.quiz.id}`);
+      return;
+    }
+
+    if (interaction.commandName === "answer") {
+      const choice = interaction.options.getString("choice", true);
+      const result = await this.answerLatestQuiz(interaction, choice);
+      await interaction.reply({ content: result, ephemeral: true });
+      return;
+    }
+
+    if (interaction.commandName === "quizleaderboard") {
+      const window = (interaction.options.getString("window") || "week") as ActivityWindow;
+      const leaderboard = await this.store.quizLeaderboard(window);
+      await interaction.reply({ content: formatQuizLeaderboard(leaderboard, window), ephemeral: false });
+      return;
+    }
+
+    if (interaction.commandName === "activetime") {
+      const window = (interaction.options.getString("window") || "week") as ActivityWindow;
+      const leaderboard = await this.store.activeTimeLeaderboard(window);
+      await interaction.reply({ content: formatActiveTimeLeaderboard(leaderboard, window), ephemeral: true });
+      return;
+    }
+
     if (interaction.commandName === "ask") {
       await interaction.deferReply({ ephemeral: false });
       const question = interaction.options.getString("question", true);
@@ -252,6 +308,42 @@ export class ContractorCircleBot {
       const message = await this.postMorningMessage();
       await interaction.editReply(`Morning message posted in <#${message.channelId}>.`);
     }
+  }
+
+  private async answerLatestQuiz(interaction: ChatInputCommandInteraction, choice: string) {
+    const channelId = interaction.channelId;
+    const quiz = await this.store.latestOpenQuiz(channelId);
+    if (!quiz) {
+      return "No open quiz found in this channel. Ask Marshall or use `/quiz` to post one.";
+    }
+
+    const choiceIndex = parseChoice(choice);
+    const displayName =
+      interaction.member && "displayName" in interaction.member ? interaction.member.displayName : interaction.user.username;
+    const result = await this.store.recordQuizAttempt({
+      quizId: quiz.id,
+      userId: interaction.user.id,
+      username: interaction.user.username,
+      displayName,
+      choiceIndex,
+    });
+
+    if (result.alreadyAnswered) {
+      const previous = formatChoiceLabel(result.attempt.choiceIndex);
+      return `You already answered this quiz with ${previous}. ${result.attempt.correct ? "That was correct." : "That was not correct."}`;
+    }
+
+    const chosen = quiz.choices[choiceIndex] ?? "Unknown choice";
+    if (result.attempt.correct) {
+      return `Correct. ${formatChoiceLabel(choiceIndex)} ${chosen}\n\n${quiz.explanation}`;
+    }
+
+    return [
+      `Not quite. You chose ${formatChoiceLabel(choiceIndex)} ${chosen}.`,
+      `Correct answer: ${formatChoiceLabel(quiz.correctIndex)} ${quiz.choices[quiz.correctIndex]}`,
+      "",
+      quiz.explanation,
+    ].join("\n");
   }
 
   private async maybeReplyAsAssistant(message: Message) {
@@ -405,6 +497,68 @@ function formatLeaderboard(leaderboard: Array<{ displayName: string; messageCoun
   }
   const rows = leaderboard.map((item, index) => `${index + 1}. ${item.displayName} - ${item.messageCount} messages`);
   return [`Contractor Circle activity leaderboard (${window})`, "", ...rows].join("\n");
+}
+
+function formatQuizPost(quiz: Pick<QuizQuestion, "id" | "topic" | "question" | "choices">) {
+  const choices = quiz.choices.map((choice, index) => `${formatChoiceLabel(index)} ${choice}`).join("\n");
+  return [
+    `ALP Think quiz: ${quiz.topic}`,
+    "",
+    quiz.question,
+    "",
+    choices,
+    "",
+    "Answer with `/answer` and pick A, B, C, or D. I’ll track the leaderboard.",
+  ].join("\n");
+}
+
+function formatQuizLeaderboard(
+  leaderboard: Array<{ displayName: string; points: number; correct: number; attempts: number }>,
+  window: ActivityWindow,
+) {
+  if (!leaderboard.length) {
+    return `No quiz answers recorded for this ${window} yet.`;
+  }
+  const rows = leaderboard.map((item, index) => {
+    return `${index + 1}. ${item.displayName} - ${item.points} pts (${item.correct}/${item.attempts})`;
+  });
+  return [`ALP Think quiz leaderboard (${window})`, "", ...rows].join("\n");
+}
+
+function formatActiveTimeLeaderboard(
+  leaderboard: Array<{ displayName: string; estimatedMinutes: number }>,
+  window: ActivityWindow,
+) {
+  if (!leaderboard.length) {
+    return `No estimated active time recorded for this ${window} yet.`;
+  }
+  const rows = leaderboard.map((item, index) => {
+    return `${index + 1}. ${item.displayName} - ${formatMinutes(item.estimatedMinutes)}`;
+  });
+  return [
+    `Estimated Discord active time (${window})`,
+    "",
+    ...rows,
+    "",
+    "This is an estimate based on messages and quiz participation, not private Discord read time.",
+  ].join("\n");
+}
+
+function parseChoice(choice: string) {
+  const normalized = choice.trim().toUpperCase();
+  const map: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+  return map[normalized] ?? 0;
+}
+
+function formatChoiceLabel(index: number) {
+  return `${String.fromCharCode(65 + index)}.`;
+}
+
+function formatMinutes(minutes: number) {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h ${rest}m` : `${hours}h`;
 }
 
 function stripBotMention(content: string, botId: string) {
