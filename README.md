@@ -59,7 +59,13 @@ The bot needs these permissions and intents:
 - Gateway intents: `Guilds`, `Guild Members`, `Guild Messages`
 - Bot permissions: send messages, read message history, use slash commands, manage roles if assigning Contractor Circle roles
 
-Enable **Server Members Intent** in the Discord Developer Portal so the bot can welcome new members.
+Enable **Server Members Intent** in the Discord Developer Portal so the bot can welcome new members. After enabling it in the Developer Portal, keep:
+
+```bash
+DISCORD_ENABLE_GUILD_MEMBERS_INTENT=true
+```
+
+If Server Members Intent is off in Discord, set `DISCORD_ENABLE_GUILD_MEMBERS_INTENT=false` so the bot can still run for prompts, replies, quizzes, and recaps. Welcomes require this intent.
 
 Enable **Message Content Intent** if you want ALP Think to understand normal messages that are not formal Discord replies or mentions. After enabling it in the Developer Portal, set:
 

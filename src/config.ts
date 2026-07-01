@@ -30,6 +30,7 @@ const envSchema = z.object({
   MORNING_POST_HOUR: z.coerce.number().int().min(0).max(23).default(8),
   DAYTIME_PROMPT_HOURS: z.string().optional().default("10,13,16"),
   ENABLE_WEEKEND_POSTS: boolFromEnv.default(false),
+  DISCORD_ENABLE_GUILD_MEMBERS_INTENT: boolFromEnv.default(true),
   DISCORD_ENABLE_MESSAGE_CONTENT_INTENT: boolFromEnv.default(false),
   SCHEDULED_PROMPTS_USE_AI: boolFromEnv.default(true),
   ASSISTANT_REPLIES_ENABLED: boolFromEnv.default(true),
@@ -69,6 +70,7 @@ export const config = {
     announcementsChannelId: parsed.DISCORD_ANNOUNCEMENTS_CHANNEL_ID || parsed.DISCORD_GENERAL_CHANNEL_ID,
     contractorCircleRoleIds: csv(parsed.CONTRACTOR_CIRCLE_ROLE_IDS),
     contractorCircleRoleNames: csv(parsed.CONTRACTOR_CIRCLE_ROLE_NAMES).map((name) => name.toLowerCase()),
+    enableGuildMembersIntent: parsed.DISCORD_ENABLE_GUILD_MEMBERS_INTENT,
     enableMessageContentIntent: parsed.DISCORD_ENABLE_MESSAGE_CONTENT_INTENT,
   },
   openai: {

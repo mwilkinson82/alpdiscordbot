@@ -42,9 +42,11 @@ export class ContractorCircleBot {
   ) {
     const intents = [
       GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMembers,
       GatewayIntentBits.GuildMessages,
     ];
+    if (appConfig.discord.enableGuildMembersIntent) {
+      intents.push(GatewayIntentBits.GuildMembers);
+    }
     if (appConfig.discord.enableMessageContentIntent) {
       intents.push(GatewayIntentBits.MessageContent);
     }

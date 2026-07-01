@@ -82,6 +82,12 @@ const fields = [
     help: "Use true only if the bot should post on weekends.",
   },
   {
+    key: "DISCORD_ENABLE_GUILD_MEMBERS_INTENT",
+    label: "Server Members Intent",
+    defaultValue: "true",
+    help: "Use true only after enabling Server Members Intent in the Discord Developer Portal. Required for welcomes.",
+  },
+  {
     key: "DISCORD_ENABLE_MESSAGE_CONTENT_INTENT",
     label: "Message Content Intent",
     defaultValue: "false",
