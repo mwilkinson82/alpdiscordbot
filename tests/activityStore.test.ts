@@ -67,8 +67,32 @@ describe("ActivityStore quiz and activity tracking", () => {
       at: new Date("2026-06-29T12:07:00.000Z"),
     });
 
-    const leaderboard = await store.activeTimeLeaderboard("day");
+    const leaderboard = await store.activeTimeLeaderboard("week");
     expect(leaderboard[0]?.displayName).toBe("Caleb");
     expect(leaderboard[0]?.estimatedMinutes).toBeGreaterThanOrEqual(8);
+  });
+
+  it("finds the latest conversation post for contextual replies", async () => {
+    const store = await makeStore();
+    await store.recordPost({
+      id: "post-1",
+      kind: "quiz",
+      channelId: "channel-1",
+      content: "A quiz should not trigger contextual replies.",
+      at: new Date("2026-06-29T12:00:00.000Z"),
+    });
+    await store.recordPost({
+      id: "post-2",
+      kind: "prompt",
+      channelId: "channel-1",
+      content: "What is the one thing you need to move before lunch?",
+      at: new Date("2026-06-29T12:05:00.000Z"),
+    });
+
+    const latest = await store.latestConversationPost("channel-1", 180, new Date("2026-06-29T13:00:00.000Z"));
+    expect(latest).toMatchObject({
+      id: "post-2",
+      content: "What is the one thing you need to move before lunch?",
+    });
   });
 });

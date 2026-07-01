@@ -114,6 +114,7 @@ export class ActivityStore {
     id: string;
     kind: ActivityStoreState["posts"][number]["kind"];
     channelId: string;
+    content?: string;
     userId?: string;
     at?: Date;
   }) {
@@ -122,6 +123,7 @@ export class ActivityStore {
       id: input.id,
       kind: input.kind,
       channelId: input.channelId,
+      content: input.content,
       userId: input.userId,
       createdAt: (input.at ?? new Date()).toISOString(),
     });
@@ -141,6 +143,16 @@ export class ActivityStore {
       return post.kind === "morning" || post.kind === "prompt" || post.kind === "call-recap";
     });
     return last ? new Date(last.createdAt) : undefined;
+  }
+
+  async latestConversationPost(channelId: string, lookbackMinutes: number, now = new Date()) {
+    await this.load();
+    const cutoff = now.getTime() - lookbackMinutes * 60 * 1000;
+    return [...this.state.posts].reverse().find((post) => {
+      if (post.channelId !== channelId) return false;
+      if (new Date(post.createdAt).getTime() < cutoff) return false;
+      return post.kind === "morning" || post.kind === "prompt" || post.kind === "call-recap";
+    });
   }
 
   async recordTargetedPrompt(input: {

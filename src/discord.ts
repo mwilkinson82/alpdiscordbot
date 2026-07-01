@@ -33,6 +33,7 @@ export class ContractorCircleBot {
   readonly client: Client;
   private readonly welcomeCache = new Map<string, number>();
   private readonly assistantReplyCache = new Map<string, number>();
+  private readonly contextualReplyCounts = new Map<string, number>();
 
   constructor(
     private readonly appConfig: AppConfig,
@@ -97,6 +98,7 @@ export class ContractorCircleBot {
       id: message.id,
       kind: "morning",
       channelId: channel.id,
+      content,
     });
     return message;
   }
@@ -107,11 +109,13 @@ export class ContractorCircleBot {
       scheduledHour === undefined
         ? await this.generateAiConversationPrompt()
         : await this.generateScheduledConversationPrompt(scheduledHour);
-    const message = await channel.send(buildPromptPost(prompt));
+    const content = buildPromptPost(prompt);
+    const message = await channel.send(content);
     await this.store.recordPost({
       id: message.id,
       kind: "prompt",
       channelId: channel.id,
+      content,
     });
     return message;
   }
@@ -123,7 +127,8 @@ export class ContractorCircleBot {
       difficulty: input.difficulty,
     });
     const quizId = randomUUID().slice(0, 8);
-    const message = await channel.send(formatQuizPost({ ...quizDraft, id: quizId }));
+    const content = formatQuizPost({ ...quizDraft, id: quizId });
+    const message = await channel.send(content);
     const quiz = await this.store.recordQuiz({
       ...quizDraft,
       id: quizId,
@@ -135,6 +140,7 @@ export class ContractorCircleBot {
       id: message.id,
       kind: "quiz",
       channelId: channel.id,
+      content,
     });
     return { message, quiz };
   }
@@ -149,6 +155,7 @@ export class ContractorCircleBot {
       id: message.id,
       kind: "call-recap",
       channelId: channel.id,
+      content,
     });
     return { message, recap };
   }
@@ -193,11 +200,13 @@ export class ContractorCircleBot {
     await this.tryAssignContractorCircleRole(member);
 
     const channel = await this.getAnnouncementChannel();
-    const message = await channel.send(buildWelcomeMessage(member.id, contractorCircleMember));
+    const content = buildWelcomeMessage(member.id, contractorCircleMember);
+    const message = await channel.send(content);
     await this.store.recordPost({
       id: message.id,
       kind: "welcome",
       channelId: channel.id,
+      content,
       userId: member.id,
     });
   }
@@ -351,7 +360,8 @@ export class ContractorCircleBot {
 
     const reference = await this.getReferencedBotMessage(message);
     const mentioned = message.mentions.users.has(this.client.user.id);
-    if (!reference && !mentioned) return;
+    const contextualPost = !reference && !mentioned ? await this.getContextualConversationPost(message) : undefined;
+    if (!reference && !mentioned && !contextualPost) return;
 
     const cacheKey = `${message.author.id}:${message.channelId}`;
     const lastReply = this.assistantReplyCache.get(cacheKey);
@@ -363,18 +373,26 @@ export class ContractorCircleBot {
     this.assistantReplyCache.set(cacheKey, Date.now());
 
     const messageText = stripBotMention(message.content || "", this.client.user.id);
+    if (contextualPost && !messageText.trim()) {
+      logger.info("Skipping contextual assistant reply because message content is unavailable. Enable Message Content Intent in Discord.");
+      return;
+    }
     const member = message.member;
+    const referencedBotMessage = reference?.content || (contextualPost ? await this.resolveStoredPostContent(contextualPost) : undefined);
     const reply = await this.ai.generateAssistantReply({
       message: messageText,
       authorName: member?.displayName || message.author.displayName || message.author.username,
       channelName: "name" in message.channel ? (message.channel.name ?? undefined) : undefined,
-      referencedBotMessage: reference?.content,
+      referencedBotMessage,
     });
 
     await message.reply({
       content: safeDiscordContent(reply),
       allowedMentions: { repliedUser: false },
     });
+    if (contextualPost) {
+      this.contextualReplyCounts.set(contextualPost.id, (this.contextualReplyCounts.get(contextualPost.id) ?? 0) + 1);
+    }
   }
 
   private async maybeReplyToTargetedPrompt(message: Message) {
@@ -410,6 +428,36 @@ export class ContractorCircleBot {
       return referenced.author.id === this.client.user.id ? referenced : undefined;
     } catch (error: any) {
       logger.warn("Could not fetch referenced message for assistant reply.", error?.message);
+      return undefined;
+    }
+  }
+
+  private async getContextualConversationPost(message: Message) {
+    if (!this.appConfig.assistant.contextualRepliesEnabled) return undefined;
+    if (!message.content?.trim()) return undefined;
+
+    const post = await this.store.latestConversationPost(
+      message.channelId,
+      this.appConfig.assistant.contextualReplyWindowMinutes,
+    );
+    if (!post) return undefined;
+    if (new Date(post.createdAt).getTime() > message.createdTimestamp) return undefined;
+
+    const replyCount = this.contextualReplyCounts.get(post.id) ?? 0;
+    if (replyCount >= this.appConfig.assistant.contextualReplyMaxPerPost) return undefined;
+    return post;
+  }
+
+  private async resolveStoredPostContent(post: { id: string; channelId: string; content?: string }) {
+    if (post.content?.trim()) return post.content;
+    try {
+      const channel = await this.getTextChannel(post.channelId);
+      const messages = "messages" in channel ? channel.messages : undefined;
+      if (!messages) return undefined;
+      const fetched = await messages.fetch(post.id);
+      return fetched.content || undefined;
+    } catch (error: any) {
+      logger.warn("Could not fetch stored bot post for assistant context.", error?.message);
       return undefined;
     }
   }

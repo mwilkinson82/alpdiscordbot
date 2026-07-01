@@ -24,6 +24,7 @@ export interface ActivityStoreState {
     kind: "welcome" | "morning" | "prompt" | "call-recap" | "quiz";
     channelId: string;
     createdAt: string;
+    content?: string;
     userId?: string;
   }>;
   targetedPrompts: TargetedPrompt[];

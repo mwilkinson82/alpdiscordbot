@@ -9,7 +9,7 @@ It replaces the narrow Manus-era bot with a clean service that can:
 - post a morning message
 - keep the room active with scheduled conversation prompts that can be AI-generated around practical daypart goals
 - accept call transcript/notes webhooks and post a recap
-- answer direct mentions, direct replies, and `/ask` questions as ALP Think
+- answer direct mentions, direct replies, contextual prompt responses, and `/ask` questions as ALP Think
 - support slash commands for manual recaps, prompts, and leaderboards
 - track activity in a local JSON store as a foundation for future leaderboards
 - post construction/business quizzes and track quiz points
@@ -59,7 +59,15 @@ The bot needs these permissions and intents:
 - Gateway intents: `Guilds`, `Guild Members`, `Guild Messages`
 - Bot permissions: send messages, read message history, use slash commands, manage roles if assigning Contractor Circle roles
 
-Enable **Server Members Intent** in the Discord Developer Portal so the bot can welcome new members. Message Content Intent is optional and off by default.
+Enable **Server Members Intent** in the Discord Developer Portal so the bot can welcome new members.
+
+Enable **Message Content Intent** if you want ALP Think to understand normal messages that are not formal Discord replies or mentions. After enabling it in the Developer Portal, set:
+
+```bash
+DISCORD_ENABLE_MESSAGE_CONTENT_INTENT=true
+```
+
+Without Message Content Intent, Discord may send normal member messages to the bot with blank content. Direct replies and mentions can still work, but natural "I answered the bot's prompt in the channel" comments will be unreliable.
 
 If role assignment fails, move the bot role above the Contractor Circle role in Discord's role list.
 
@@ -117,7 +125,13 @@ POST to `/webhooks/quiz` with header `x-webhook-secret: <WEBHOOK_SECRET>` to hav
 - `/quizleaderboard` shows quiz points
 - `/activetime` shows estimated Discord active time
 
-The bot only answers when someone mentions it, replies directly to one of its messages, or uses `/ask`.
+The bot answers when someone mentions it, replies directly to one of its messages, uses `/ask`, or posts a normal message shortly after an ALP Think morning message, prompt, or recap. Contextual replies are capped by:
+
+```bash
+ASSISTANT_CONTEXTUAL_REPLIES_ENABLED=true
+ASSISTANT_CONTEXTUAL_REPLY_WINDOW_MINUTES=180
+ASSISTANT_CONTEXTUAL_REPLY_MAX_PER_POST=3
+```
 
 `/activetime` is an estimate based on messages and quiz participation windows. Discord does not expose private read time or exact time spent looking at the server.
 
