@@ -39,6 +39,12 @@ const fields = [
     help: "Use the same channel as above unless you want morning posts elsewhere.",
   },
   {
+    key: "DISCORD_OWNER_USER_IDS",
+    label: "Owner User IDs",
+    defaultValue: "927272166049865807",
+    help: "Comma-separated Discord user IDs that can override or shut down ALP Think behavior.",
+  },
+  {
     key: "CONTRACTOR_CIRCLE_ROLE_IDS",
     label: "Contractor Circle Role ID",
     defaultValue: "1484648318662344985",

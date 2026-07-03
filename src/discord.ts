@@ -362,7 +362,8 @@ export class ContractorCircleBot {
 
     const reference = await this.getReferencedBotMessage(message);
     const mentioned = message.mentions.users.has(this.client.user.id);
-    const contextualPost = !reference && !mentioned ? await this.getContextualConversationPost(message) : undefined;
+    const contextualPost =
+      !message.reference && !reference && !mentioned ? await this.getContextualConversationPost(message) : undefined;
     if (!reference && !mentioned && !contextualPost) return;
 
     const cacheKey = `${message.author.id}:${message.channelId}`;
@@ -375,6 +376,7 @@ export class ContractorCircleBot {
     this.assistantReplyCache.set(cacheKey, Date.now());
 
     const messageText = stripBotMention(message.content || "", this.client.user.id);
+    if (this.shouldSuppressAssistantReply(message, messageText)) return;
     if (contextualPost && !messageText.trim()) {
       logger.info("Skipping contextual assistant reply because message content is unavailable. Enable Message Content Intent in Discord.");
       return;
@@ -401,6 +403,7 @@ export class ContractorCircleBot {
     if (!this.appConfig.assistant.repliesEnabled) return;
     const pending = await this.store.pendingTargetedPromptFor(message.author.id, message.channelId);
     if (!pending) return;
+    if (this.shouldSuppressAssistantReply(message, message.content || "")) return;
 
     const cacheKey = `targeted:${message.author.id}:${message.channelId}`;
     const lastReply = this.assistantReplyCache.get(cacheKey);
@@ -432,6 +435,39 @@ export class ContractorCircleBot {
       logger.warn("Could not fetch referenced message for assistant reply.", error?.message);
       return undefined;
     }
+  }
+
+  private shouldSuppressAssistantReply(message: Message, content: string) {
+    if (!this.appConfig.discord.ownerUserIds.includes(message.author.id)) return false;
+
+    const normalized = content
+      .toLowerCase()
+      .replace(/[’]/g, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!normalized) return false;
+
+    const shortStops = new Set(["no", "no.", "nah", "nope", "stop", "stop.", "fuck off"]);
+    const ownerRebukes = [
+      "don't be woke",
+      "dont be woke",
+      "my environment",
+      "you're supposed to",
+      "you are supposed to",
+      "mini me",
+      "shut up",
+      "stay in your lane",
+      "do not reply",
+      "don't reply",
+      "dont reply",
+      "fuck off",
+    ];
+
+    if (shortStops.has(normalized) || ownerRebukes.some((phrase) => normalized.includes(phrase))) {
+      logger.info("Skipping assistant reply because the owner rebuked or stopped the bot.");
+      return true;
+    }
+    return false;
   }
 
   private async getContextualConversationPost(message: Message) {
