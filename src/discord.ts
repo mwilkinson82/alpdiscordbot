@@ -388,10 +388,11 @@ export class ContractorCircleBot {
       authorName: member?.displayName || message.author.displayName || message.author.username,
       channelName: "name" in message.channel ? (message.channel.name ?? undefined) : undefined,
       referencedBotMessage,
+      isOwner: this.isOwner(message.author.id),
     });
 
     await message.reply({
-      content: safeDiscordContent(reply),
+      content: safeDiscordContent(this.guardAssistantReply(reply, message)),
       allowedMentions: { repliedUser: false },
     });
     if (contextualPost) {
@@ -418,10 +419,11 @@ export class ContractorCircleBot {
       authorName: member?.displayName || message.author.displayName || message.author.username,
       channelName: "name" in message.channel ? (message.channel.name ?? undefined) : undefined,
       referencedBotMessage: pending.promptText,
+      isOwner: this.isOwner(message.author.id),
     });
 
     await message.reply({
-      content: safeDiscordContent(reply),
+      content: safeDiscordContent(this.guardAssistantReply(reply, message)),
       allowedMentions: { repliedUser: false },
     });
   }
@@ -438,7 +440,7 @@ export class ContractorCircleBot {
   }
 
   private shouldSuppressAssistantReply(message: Message, content: string) {
-    if (!this.appConfig.discord.ownerUserIds.includes(message.author.id)) return false;
+    if (!this.isOwner(message.author.id)) return false;
 
     const normalized = content
       .toLowerCase()
@@ -468,6 +470,21 @@ export class ContractorCircleBot {
       return true;
     }
     return false;
+  }
+
+  private isOwner(userId: string) {
+    return this.appConfig.discord.ownerUserIds.includes(userId);
+  }
+
+  private guardAssistantReply(reply: string, message: Message) {
+    const owner = this.isOwner(message.author.id);
+    if (!looksLikeLanguagePolicing(reply) && !(owner && looksLikeOwnerChallenge(reply))) return reply;
+
+    logger.warn("Replacing assistant reply because it looked like language policing or owner challenge.");
+    if (owner) {
+      return "Copy. I’m with you. I’ll stay in my lane and keep the room moving.";
+    }
+    return "Copy. Bring it back to the work: what decision, risk, cash issue, or schedule slip needs attention?";
   }
 
   private async getContextualConversationPost(message: Message) {
@@ -651,6 +668,58 @@ function stripBotMention(content: string, botId: string) {
   return content
     .replace(new RegExp(`<@!?${botId}>`, "g"), "")
     .trim();
+}
+
+function looksLikeLanguagePolicing(content: string) {
+  const normalized = content
+    .toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+  const blockedPhrases = [
+    "keep it professional",
+    "let's keep it professional",
+    "not about being woke",
+    "it's about standards",
+    "standard still stands",
+    "professional contractor environment",
+    "use language",
+    "your language",
+    "cleaner execution",
+    "unnecessary distractions",
+    "liability",
+    "wording",
+    "grammar",
+    "slang",
+    "profanity",
+    "don't say",
+    "do not say",
+    "police your language",
+  ];
+  return blockedPhrases.some((phrase) => normalized.includes(phrase));
+}
+
+function looksLikeOwnerChallenge(content: string) {
+  const normalized = content
+    .toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+  const blockedPhrases = [
+    "you're wrong",
+    "you are wrong",
+    "i disagree",
+    "i'm not marshall",
+    "i am not marshall",
+    "not exactly",
+    "that's not",
+    "that is not",
+    "you should",
+    "you need to",
+    "you have to",
+    "the standard still stands",
+  ];
+  return blockedPhrases.some((phrase) => normalized.includes(phrase));
 }
 
 function safeDiscordContent(content: string) {

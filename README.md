@@ -139,7 +139,7 @@ ASSISTANT_CONTEXTUAL_REPLY_WINDOW_MINUTES=180
 ASSISTANT_CONTEXTUAL_REPLY_MAX_PER_POST=3
 ```
 
-Contextual replies do not fire inside another member's reply thread. Owner accounts in `DISCORD_OWNER_USER_IDS` can also shut the bot down with direct rebukes such as "stop" or "stay in your lane"; the bot will not argue.
+Contextual replies do not fire inside another member's reply thread. Owner accounts in `DISCORD_OWNER_USER_IDS` can also shut the bot down with direct rebukes such as "stop" or "stay in your lane"; the bot will not argue, tone-correct, or language-police the owner.
 
 `/activetime` is an estimate based on messages and quiz participation windows. Discord does not expose private read time or exact time spent looking at the server.
 
