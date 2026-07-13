@@ -190,19 +190,29 @@ export class ContractorCircleBot {
       return;
     }
 
-    const contractorCircleMember = this.isContractorCircleMember(member);
     this.markWelcomed(member.id);
+
+    const pendingWelcome = await this.store.pendingWelcomeForMember({
+      username: member.user.username,
+      displayName: member.displayName,
+    });
+    const roleAssigned = await this.tryAssignContractorCircleRole(member);
+    const contractorCircleMember =
+      this.isContractorCircleMember(member) || roleAssigned || Boolean(pendingWelcome?.contractorCircleMember);
+
     await this.store.recordJoin({
       userId: member.id,
       username: member.user.username,
       displayName: member.displayName,
       contractorCircleMember,
     });
-
-    await this.tryAssignContractorCircleRole(member);
+    if (pendingWelcome) {
+      await this.store.markPendingWelcomeMatched(pendingWelcome.id, member.id);
+      logger.info(`Matched pending welcome ${pendingWelcome.id} to ${member.id}.`);
+    }
 
     const channel = await this.getAnnouncementChannel();
-    const content = buildWelcomeMessage(member.id, contractorCircleMember);
+    const content = buildWelcomeMessage(member.id, contractorCircleMember, pendingWelcome?.expectedName);
     const message = await channel.send(content);
     await this.store.recordPost({
       id: message.id,
@@ -552,11 +562,12 @@ export class ContractorCircleBot {
       try {
         await member.roles.add(roleId, "Contractor Circle welcome automation");
         logger.info(`Assigned Contractor Circle role ${roleId} to ${member.id}.`);
-        return;
+        return true;
       } catch (error: any) {
         logger.warn(`Could not assign Contractor Circle role ${roleId} to ${member.id}.`, error?.message);
       }
     }
+    return false;
   }
 
   private isContractorCircleMember(member: GuildMember) {

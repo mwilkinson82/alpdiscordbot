@@ -107,6 +107,16 @@ POST to `/webhooks/targeted-prompt` with header `x-webhook-secret: <WEBHOOK_SECR
 
 If the target member responds in that channel within the configured response window, ALP Think can reply in context.
 
+## Pending Member Welcomes
+
+When a new paid Contractor Circle member appears in Stripe before they join Discord, add them to the watchlist:
+
+```bash
+npm run watch:member -- "Andrew Ernst" a.ernst@acernst.com aernst acernst
+```
+
+Discord does not expose the member's email when they join, so the bot matches against their Discord username and display name using the name and keyword fragments you provide. When it finds a match, it treats the join as a Contractor Circle member welcome and marks the pending welcome as handled.
+
 ## Quiz Webhook
 
 POST to `/webhooks/quiz` with header `x-webhook-secret: <WEBHOOK_SECRET>` to have ALP Think generate and post a quiz.

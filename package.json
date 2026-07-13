@@ -11,7 +11,8 @@
     "check": "tsc --noEmit",
     "test": "vitest run",
     "register:commands": "tsx scripts/register-commands.ts",
-    "setup:env": "tsx scripts/setup-env.ts"
+    "setup:env": "tsx scripts/setup-env.ts",
+    "watch:member": "tsx scripts/watch-member.ts"
   },
   "dependencies": {
     "discord.js": "^14.26.4",

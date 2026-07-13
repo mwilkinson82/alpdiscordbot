@@ -67,7 +67,7 @@ describe("ActivityStore quiz and activity tracking", () => {
       at: new Date("2026-06-29T12:07:00.000Z"),
     });
 
-    const leaderboard = await store.activeTimeLeaderboard("week");
+    const leaderboard = await store.activeTimeLeaderboard("month");
     expect(leaderboard[0]?.displayName).toBe("Caleb");
     expect(leaderboard[0]?.estimatedMinutes).toBeGreaterThanOrEqual(8);
   });
@@ -94,5 +94,22 @@ describe("ActivityStore quiz and activity tracking", () => {
       id: "post-2",
       content: "What is the one thing you need to move before lunch?",
     });
+  });
+
+  it("matches a pending welcome by expected member name or email fragments", async () => {
+    const store = await makeStore();
+    const pending = await store.recordPendingWelcome({
+      expectedName: "Andrew Ernst",
+      email: "a.ernst@acernst.com",
+      keywords: ["aernst", "acernst"],
+      contractorCircleMember: true,
+    });
+
+    const match = await store.pendingWelcomeForMember({
+      username: "aernst",
+      displayName: "Andrew",
+    });
+
+    expect(match?.id).toBe(pending.id);
   });
 });

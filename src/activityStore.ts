@@ -5,6 +5,7 @@ import type {
   ActivityRecord,
   ActivityStoreState,
   ActivityWindow,
+  PendingWelcome,
   QuizAttempt,
   QuizLeaderboardRow,
   QuizQuestion,
@@ -16,6 +17,7 @@ const emptyState = (): ActivityStoreState => ({
   users: {},
   posts: [],
   targetedPrompts: [],
+  pendingWelcomes: [],
   quizzes: [],
   quizAttempts: [],
   activityEvents: [],
@@ -37,6 +39,7 @@ export class ActivityStore {
       const raw = await readFile(this.filePath, "utf8");
       this.state = JSON.parse(raw) as ActivityStoreState;
       this.state.targetedPrompts ??= [];
+      this.state.pendingWelcomes ??= [];
       this.state.quizzes ??= [];
       this.state.quizAttempts ??= [];
       this.state.activityEvents ??= [];
@@ -201,6 +204,66 @@ export class ActivityStore {
     const prompt = this.state.targetedPrompts.find((item) => item.id === id);
     if (!prompt) return;
     prompt.respondedAt = at.toISOString();
+    await this.save();
+  }
+
+  async recordPendingWelcome(input: {
+    expectedName: string;
+    email?: string;
+    keywords: string[];
+    contractorCircleMember: boolean;
+    note?: string;
+    expiresAt?: Date;
+    at?: Date;
+  }): Promise<PendingWelcome> {
+    await this.load();
+    const now = input.at ?? new Date();
+    const normalizedKeywords = normalizeKeywords([
+      input.expectedName,
+      input.email,
+      ...input.keywords,
+    ]);
+    const id = createPendingWelcomeId(input.email || input.expectedName);
+    const pending: PendingWelcome = {
+      id,
+      expectedName: input.expectedName,
+      email: input.email,
+      keywords: normalizedKeywords,
+      contractorCircleMember: input.contractorCircleMember,
+      note: input.note,
+      createdAt: now.toISOString(),
+      expiresAt: input.expiresAt?.toISOString(),
+    };
+    const pendingWelcomes = this.state.pendingWelcomes.filter((item) => item.id !== id);
+    pendingWelcomes.push(pending);
+    this.state.pendingWelcomes = pendingWelcomes.slice(-100);
+    await this.save();
+    return pending;
+  }
+
+  async pendingWelcomeForMember(input: {
+    username: string;
+    displayName: string;
+    now?: Date;
+  }): Promise<PendingWelcome | undefined> {
+    await this.load();
+    const now = input.now ?? new Date();
+    const haystack = normalizeKeyword(`${input.username} ${input.displayName}`);
+    return [...this.state.pendingWelcomes].reverse().find((pending) => {
+      if (pending.welcomedAt || pending.matchedUserId) return false;
+      if (pending.expiresAt && new Date(pending.expiresAt).getTime() < now.getTime()) return false;
+      return pending.keywords.some((keyword) => {
+        return keyword.length >= 3 && haystack.includes(keyword);
+      });
+    });
+  }
+
+  async markPendingWelcomeMatched(id: string, userId: string, at = new Date()) {
+    await this.load();
+    const pending = this.state.pendingWelcomes.find((item) => item.id === id);
+    if (!pending) return;
+    pending.matchedUserId = userId;
+    pending.welcomedAt = at.toISOString();
     await this.save();
   }
 
@@ -374,4 +437,24 @@ function calculateActivityMinutes(lastActiveAt: string | undefined, nowIso: stri
   const deltaMinutes = Math.round((new Date(nowIso).getTime() - new Date(lastActiveAt).getTime()) / 60000);
   if (!Number.isFinite(deltaMinutes) || deltaMinutes <= 0) return 1;
   return Math.min(deltaMinutes, 15);
+}
+
+function createPendingWelcomeId(value: string) {
+  return `pending:${normalizeKeyword(value).replace(/\s+/g, "-")}`;
+}
+
+function normalizeKeywords(values: Array<string | undefined>) {
+  const keywords = values.flatMap((value) => {
+    const normalized = normalizeKeyword(value);
+    return [normalized, normalized.replace(/\s+/g, "")];
+  });
+  return [...new Set(keywords.filter((value) => value.length >= 3))];
+}
+
+function normalizeKeyword(value: string | undefined) {
+  return (value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }

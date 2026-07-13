@@ -28,6 +28,7 @@ export interface ActivityStoreState {
     userId?: string;
   }>;
   targetedPrompts: TargetedPrompt[];
+  pendingWelcomes: PendingWelcome[];
   quizzes: QuizQuestion[];
   quizAttempts: QuizAttempt[];
   activityEvents: ActivityEvent[];
@@ -43,6 +44,19 @@ export interface TargetedPrompt {
   createdAt: string;
   expiresAt: string;
   respondedAt?: string;
+}
+
+export interface PendingWelcome {
+  id: string;
+  expectedName: string;
+  email?: string;
+  keywords: string[];
+  contractorCircleMember: boolean;
+  note?: string;
+  createdAt: string;
+  expiresAt?: string;
+  matchedUserId?: string;
+  welcomedAt?: string;
 }
 
 export interface CallRecapInput {

@@ -24,11 +24,12 @@ export function buildMorningMessage(date: Date, timezone: string) {
   return `Good morning. It is ${dateText}. Let's have a strong day, work with intentionality, and ${theme}. What is the one thing you need to move forward before the day gets noisy?`;
 }
 
-export function buildWelcomeMessage(userId: string, contractorCircleMember: boolean) {
+export function buildWelcomeMessage(userId: string, contractorCircleMember: boolean, expectedName?: string) {
   if (contractorCircleMember) {
     return [
       `Welcome to The Contractor Circle, <@${userId}>.`,
       "",
+      ...(expectedName ? [`${expectedName}, we were expecting you. Glad you made it into the room.`, ""] : []),
       "Glad you are here. This is the room for the real operator conversations between calls: wins, bottlenecks, estimates, schedule pressure, hiring, cash, and the decisions that make the business better.",
       "",
       "When you get a minute, drop a quick intro: who you are, what kind of work you do, and what you want to get out of Contractor Circle.",
