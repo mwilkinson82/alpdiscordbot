@@ -1,8 +1,10 @@
 import express from "express";
 import { z } from "zod";
+import type { ActivityStore } from "./activityStore.js";
 import type { AppConfig } from "./config.js";
 import type { ContractorCircleBot } from "./discord.js";
 import { logger } from "./logger.js";
+import { handleStripeWebhook } from "./stripeWebhook.js";
 
 const callRecapSchema = z.object({
   title: z.string().optional(),
@@ -25,8 +27,24 @@ const quizSchema = z.object({
   channelId: z.string().optional(),
 });
 
-export function startHttpServer(appConfig: AppConfig, bot: ContractorCircleBot) {
+export function createHttpApp(appConfig: AppConfig, bot: ContractorCircleBot, store: ActivityStore) {
   const app = express();
+
+  app.post("/webhooks/stripe", express.raw({ type: "application/json" }), async (req, res) => {
+    try {
+      const result = await handleStripeWebhook({
+        rawBody: req.body as Buffer,
+        signature: req.header("stripe-signature") || undefined,
+        config: appConfig.stripe,
+        store,
+      });
+      res.status(result.status).json(result.body);
+    } catch (error: any) {
+      logger.error("Stripe webhook failed.", error?.message);
+      res.status(500).json({ ok: false, error: "Stripe webhook failed" });
+    }
+  });
+
   app.use(express.json({ limit: "2mb" }));
 
   app.get("/health", (_req, res) => {
@@ -119,6 +137,11 @@ export function startHttpServer(appConfig: AppConfig, bot: ContractorCircleBot) 
     }
   });
 
+  return app;
+}
+
+export function startHttpServer(appConfig: AppConfig, bot: ContractorCircleBot, store: ActivityStore) {
+  const app = createHttpApp(appConfig, bot, store);
   const server = app.listen(appConfig.server.port, () => {
     logger.info(`HTTP server listening on port ${appConfig.server.port}.`);
   });

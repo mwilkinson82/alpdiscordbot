@@ -27,6 +27,10 @@ const envSchema = z.object({
   OPENAI_TEXT_VERBOSITY: z.enum(["low", "medium", "high"]).default("low"),
   PORT: z.coerce.number().int().positive().default(8787),
   WEBHOOK_SECRET: z.string().optional().default(""),
+  STRIPE_WEBHOOK_SECRET: z.string().optional().default(""),
+  STRIPE_SECRET_KEY: z.string().optional().default(""),
+  STRIPE_CONTRACTOR_CIRCLE_PRICE_ID: z.string().optional().default(""),
+  STRIPE_CONTRACTOR_CIRCLE_PRODUCT_ID: z.string().optional().default(""),
   TIMEZONE: z.string().min(1).default("America/New_York"),
   MORNING_POST_HOUR: z.coerce.number().int().min(0).max(23).default(8),
   DAYTIME_PROMPT_HOURS: z.string().optional().default("10,13,16"),
@@ -84,6 +88,12 @@ export const config = {
   server: {
     port: parsed.PORT,
     webhookSecret: parsed.WEBHOOK_SECRET,
+  },
+  stripe: {
+    webhookSecret: parsed.STRIPE_WEBHOOK_SECRET,
+    secretKey: parsed.STRIPE_SECRET_KEY,
+    contractorCirclePriceIds: csv(parsed.STRIPE_CONTRACTOR_CIRCLE_PRICE_ID),
+    contractorCircleProductIds: csv(parsed.STRIPE_CONTRACTOR_CIRCLE_PRODUCT_ID),
   },
   schedule: {
     timezone: parsed.TIMEZONE,

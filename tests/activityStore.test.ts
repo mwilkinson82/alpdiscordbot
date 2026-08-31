@@ -54,17 +54,18 @@ describe("ActivityStore quiz and activity tracking", () => {
 
   it("estimates active time from member activity events", async () => {
     const store = await makeStore();
+    const now = new Date();
     await store.recordMessage({
       userId: "user-1",
       username: "caleb",
       displayName: "Caleb",
-      at: new Date("2026-06-29T12:00:00.000Z"),
+      at: new Date(now.getTime() - 7 * 60 * 1000),
     });
     await store.recordMessage({
       userId: "user-1",
       username: "caleb",
       displayName: "Caleb",
-      at: new Date("2026-06-29T12:07:00.000Z"),
+      at: now,
     });
 
     const leaderboard = await store.activeTimeLeaderboard("month");
