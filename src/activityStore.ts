@@ -12,6 +12,7 @@ import type {
   TargetedPrompt,
 } from "./types.js";
 import { logger } from "./logger.js";
+import { isAllowedWatchKeyword } from "./watchKeywords.js";
 
 const emptyState = (): ActivityStoreState => ({
   users: {},
@@ -43,6 +44,7 @@ export class ActivityStore {
       this.state.quizzes ??= [];
       this.state.quizAttempts ??= [];
       this.state.activityEvents ??= [];
+      this.state.stripePoll ??= {};
     } catch (error: any) {
       if (error?.code !== "ENOENT") {
         logger.warn("Could not read activity store; starting fresh.", error?.message);
@@ -267,6 +269,33 @@ export class ActivityStore {
     await this.save();
   }
 
+  async findPendingWelcomeByEmail(email: string): Promise<PendingWelcome | undefined> {
+    await this.load();
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) return undefined;
+    const id = createPendingWelcomeId(email);
+    return this.state.pendingWelcomes.find((item) => {
+      return item.id === id || item.email?.trim().toLowerCase() === normalized;
+    });
+  }
+
+  async getStripePollWatermark(): Promise<Date | undefined> {
+    await this.load();
+    const raw = this.state.stripePoll?.lastSuccessAt;
+    if (!raw) return undefined;
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+
+  async setStripePollWatermark(at: Date) {
+    await this.load();
+    this.state.stripePoll = {
+      ...this.state.stripePoll,
+      lastSuccessAt: at.toISOString(),
+    };
+    await this.save();
+  }
+
   async recordQuiz(input: Omit<QuizQuestion, "createdAt" | "expiresAt"> & { ttlHours: number; at?: Date }) {
     await this.load();
     const now = input.at ?? new Date();
@@ -446,9 +475,10 @@ function createPendingWelcomeId(value: string) {
 function normalizeKeywords(values: Array<string | undefined>) {
   const keywords = values.flatMap((value) => {
     const normalized = normalizeKeyword(value);
-    return [normalized, normalized.replace(/\s+/g, "")];
+    const tokens = normalized.split(" ").filter(Boolean);
+    return [normalized, normalized.replace(/\s+/g, ""), ...tokens];
   });
-  return [...new Set(keywords.filter((value) => value.length >= 3))];
+  return [...new Set(keywords.filter((value) => isAllowedWatchKeyword(value)))];
 }
 
 function normalizeKeyword(value: string | undefined) {

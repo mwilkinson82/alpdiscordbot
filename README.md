@@ -109,13 +109,31 @@ If the target member responds in that channel within the configured response win
 
 ## Pending Member Welcomes
 
-When a new paid Contractor Circle member appears in Stripe before they join Discord, add them to the watchlist:
+Pending welcomes live in the local JSON activity store (`DATA_DIR/activity.json`). Discord does not expose email on join, so the bot matches username/display-name fragments. On match, the existing join flow welcomes the member and grants the Contractor Circle role.
+
+### Stripe poller (this Mac)
+
+This bot runs locally (LaunchAgent, `localhost:8787` only) and has no public URL. It does **not** depend on inbound Stripe webhooks.
+
+Every few minutes the scheduler polls the **ALPio live** Stripe account (not Overwatch) for new Contractor Circle purchases and writes them to the same pending-welcome list.
+
+1. Set `STRIPE_SECRET_KEY` to a restricted key with `checkout.sessions.read`, `customers.read`, and `subscriptions.read`. If this is missing, the poll is skipped (logged once) and the Discord gateway keeps running.
+2. Circle identifiers default to product `prod_UhuaYXyzDSknXg` and price `price_1TiUlGJdDAUSVXbNQRjv1ntA`. Override with `STRIPE_CONTRACTOR_CIRCLE_PRICE_ID` / `STRIPE_CONTRACTOR_CIRCLE_PRODUCT_ID` only if those change. A Mac `.env.local` can work with just `STRIPE_SECRET_KEY`.
+3. Optional: `STRIPE_POLL_MINUTES` (default 5). `STRIPE_POLL_LOOKBACK_MINUTES` (default 10080 / 7 days) is only the **first-run / missing-watermark cap**. After a successful poll, the last-success timestamp is stored in `activity.json` and the next poll asks Stripe from that watermark — so a laptop closed longer than 180 minutes still sees Circle purchases in the gap. A first boot does not page the entire Stripe history.
+
+Intensives and other ALPio products are ignored. The same email is not double-added (`pending:{normalized-email}`), including after the member has already been welcomed. Public email domains/TLDs are not used as Discord match keywords.
+
+`POST /webhooks/stripe` remains available for a future public host. It is not required on this machine.
+
+### Manual fallback
+
+`watch:member` still works when Stripe does not send a usable name, or you need to add someone by hand:
 
 ```bash
 npm run watch:member -- "Andrew Ernst" a.ernst@acernst.com aernst acernst
 ```
 
-Discord does not expose the member's email when they join, so the bot matches against their Discord username and display name using the name and keyword fragments you provide. When it finds a match, it treats the join as a Contractor Circle member welcome and marks the pending welcome as handled.
+The CLI writes to the same pending-welcome list as the Stripe poller. Extra keyword fragments are optional; name and email are turned into username/display-name fragments automatically.
 
 ## Quiz Webhook
 

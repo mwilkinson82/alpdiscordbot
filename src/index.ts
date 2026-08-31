@@ -14,7 +14,7 @@ await store.load();
 const ai = new AiService(config);
 const bot = new ContractorCircleBot(config, store, ai);
 
-const stopHttp = startHttpServer(config, bot);
+const stopHttp = startHttpServer(config, bot, store);
 let stopScheduler: (() => void) | undefined;
 
 try {

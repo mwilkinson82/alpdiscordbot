@@ -54,17 +54,18 @@ describe("ActivityStore quiz and activity tracking", () => {
 
   it("estimates active time from member activity events", async () => {
     const store = await makeStore();
+    const now = new Date();
     await store.recordMessage({
       userId: "user-1",
       username: "caleb",
       displayName: "Caleb",
-      at: new Date("2026-06-29T12:00:00.000Z"),
+      at: new Date(now.getTime() - 7 * 60 * 1000),
     });
     await store.recordMessage({
       userId: "user-1",
       username: "caleb",
       displayName: "Caleb",
-      at: new Date("2026-06-29T12:07:00.000Z"),
+      at: now,
     });
 
     const leaderboard = await store.activeTimeLeaderboard("month");
@@ -111,5 +112,32 @@ describe("ActivityStore quiz and activity tracking", () => {
     });
 
     expect(match?.id).toBe(pending.id);
+  });
+
+  it("does not match public email domains or TLDs from rachel@gmail.com", async () => {
+    const store = await makeStore();
+    const pending = await store.recordPendingWelcome({
+      expectedName: "Rachel Stone",
+      email: "rachel@gmail.com",
+      keywords: [],
+      contractorCircleMember: true,
+    });
+
+    expect(pending.keywords).not.toContain("gmail");
+    expect(pending.keywords).not.toContain("com");
+
+    expect(
+      await store.pendingWelcomeForMember({
+        username: "rachel",
+        displayName: "Rachel",
+      }),
+    ).toMatchObject({ id: pending.id });
+
+    expect(
+      await store.pendingWelcomeForMember({
+        username: "comfort",
+        displayName: "Company",
+      }),
+    ).toBeUndefined();
   });
 });

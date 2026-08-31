@@ -1,5 +1,6 @@
 import { config as loadEnv } from "dotenv";
 import { ActivityStore } from "../src/activityStore.js";
+import { watchContractorCircleMember } from "../src/pendingWelcome.js";
 
 loadEnv({ path: ".env.local", quiet: true });
 loadEnv({ quiet: true });
@@ -12,15 +13,13 @@ if (!expectedName) {
 }
 
 const store = new ActivityStore(process.env.DATA_DIR || "./data");
-const pending = await store.recordPendingWelcome({
+const pending = await watchContractorCircleMember(store, {
   expectedName,
   email: email && email.includes("@") ? email : undefined,
   keywords: [
     ...(email && !email.includes("@") ? [email] : []),
     ...keywords,
   ],
-  contractorCircleMember: true,
-  note: "Stripe Contractor Circle Membership active.",
 });
 
 console.log(`Watching for ${pending.expectedName}.`);
