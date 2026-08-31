@@ -33,7 +33,7 @@ const envSchema = z.object({
   STRIPE_CONTRACTOR_CIRCLE_PRICE_ID: z.string().optional().default(""),
   STRIPE_CONTRACTOR_CIRCLE_PRODUCT_ID: z.string().optional().default(""),
   STRIPE_POLL_MINUTES: z.coerce.number().int().min(1).max(60).default(5),
-  STRIPE_POLL_LOOKBACK_MINUTES: z.coerce.number().int().positive().default(180),
+  STRIPE_POLL_LOOKBACK_MINUTES: z.coerce.number().int().positive().default(10080),
   TIMEZONE: z.string().min(1).default("America/New_York"),
   MORNING_POST_HOUR: z.coerce.number().int().min(0).max(23).default(8),
   DAYTIME_PROMPT_HOURS: z.string().optional().default("10,13,16"),

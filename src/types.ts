@@ -32,6 +32,9 @@ export interface ActivityStoreState {
   quizzes: QuizQuestion[];
   quizAttempts: QuizAttempt[];
   activityEvents: ActivityEvent[];
+  stripePoll?: {
+    lastSuccessAt?: string;
+  };
 }
 
 export interface TargetedPrompt {

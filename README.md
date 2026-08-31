@@ -119,7 +119,7 @@ Every few minutes the scheduler polls the **ALPio live** Stripe account (not Ove
 
 1. Set `STRIPE_SECRET_KEY` to a restricted key with `checkout.sessions.read`, `customers.read`, and `subscriptions.read`. If this is missing, the poll is skipped (logged once) and the Discord gateway keeps running.
 2. Circle identifiers default to product `prod_UhuaYXyzDSknXg` and price `price_1TiUlGJdDAUSVXbNQRjv1ntA`. Override with `STRIPE_CONTRACTOR_CIRCLE_PRICE_ID` / `STRIPE_CONTRACTOR_CIRCLE_PRODUCT_ID` only if those change. A Mac `.env.local` can work with just `STRIPE_SECRET_KEY`.
-3. Optional: `STRIPE_POLL_MINUTES` (default 5) and `STRIPE_POLL_LOOKBACK_MINUTES` (default 180).
+3. Optional: `STRIPE_POLL_MINUTES` (default 5). `STRIPE_POLL_LOOKBACK_MINUTES` (default 10080 / 7 days) is only the **first-run / missing-watermark cap**. After a successful poll, the last-success timestamp is stored in `activity.json` and the next poll asks Stripe from that watermark — so a laptop closed longer than 180 minutes still sees Circle purchases in the gap. A first boot does not page the entire Stripe history.
 
 Intensives and other ALPio products are ignored. The same email is not double-added (`pending:{normalized-email}`), including after the member has already been welcomed. Public email domains/TLDs are not used as Discord match keywords.
 

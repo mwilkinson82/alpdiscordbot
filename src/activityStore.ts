@@ -44,6 +44,7 @@ export class ActivityStore {
       this.state.quizzes ??= [];
       this.state.quizAttempts ??= [];
       this.state.activityEvents ??= [];
+      this.state.stripePoll ??= {};
     } catch (error: any) {
       if (error?.code !== "ENOENT") {
         logger.warn("Could not read activity store; starting fresh.", error?.message);
@@ -276,6 +277,23 @@ export class ActivityStore {
     return this.state.pendingWelcomes.find((item) => {
       return item.id === id || item.email?.trim().toLowerCase() === normalized;
     });
+  }
+
+  async getStripePollWatermark(): Promise<Date | undefined> {
+    await this.load();
+    const raw = this.state.stripePoll?.lastSuccessAt;
+    if (!raw) return undefined;
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+
+  async setStripePollWatermark(at: Date) {
+    await this.load();
+    this.state.stripePoll = {
+      ...this.state.stripePoll,
+      lastSuccessAt: at.toISOString(),
+    };
+    await this.save();
   }
 
   async recordQuiz(input: Omit<QuizQuestion, "createdAt" | "expiresAt"> & { ttlHours: number; at?: Date }) {

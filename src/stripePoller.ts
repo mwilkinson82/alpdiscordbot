@@ -105,7 +105,7 @@ export async function pollStripeCirclePurchases(input: {
   }
 
   const now = input.now ?? new Date();
-  const createdGte = Math.floor((now.getTime() - input.config.lookbackMinutes * 60 * 1000) / 1000);
+  const createdGte = await resolveCreatedGte(input.store, now, input.config.lookbackMinutes);
   const configured = {
     priceIds: input.config.contractorCirclePriceIds,
     productIds: input.config.contractorCircleProductIds,
@@ -119,6 +119,7 @@ export async function pollStripeCirclePurchases(input: {
   for (const session of checkoutSessions) {
     examined += 1;
     const email = firstString(session.customer_details?.email, session.customer_email);
+    const nameFromSession = firstString(session.customer_details?.name);
     if (email && (seenEmails.has(email.toLowerCase()) || (await input.store.findPendingWelcomeByEmail(email)))) {
       continue;
     }
@@ -130,8 +131,8 @@ export async function pollStripeCirclePurchases(input: {
 
     const customerId = typeof session.customer === "string" ? session.customer : undefined;
     const retrieved =
-      !firstString(session.customer_details?.name) && customerId ? await client.retrieveCustomer(customerId) : undefined;
-    const name = firstString(session.customer_details?.name, retrieved?.name);
+      customerId && (!email || !nameFromSession) ? await client.retrieveCustomer(customerId) : undefined;
+    const name = firstString(nameFromSession, retrieved?.name);
     const resolvedEmail = firstString(email, retrieved?.email);
     const queued = await queueCircleMember(input.store, name, resolvedEmail, seenEmails);
     if (queued) added += 1;
@@ -156,6 +157,7 @@ export async function pollStripeCirclePurchases(input: {
     logger.info(`Stripe poll queued ${added} Contractor Circle pending welcome(s).`);
   }
 
+  await input.store.setStripePollWatermark(now);
   return { skipped: false, added, examined };
 }
 
@@ -195,6 +197,14 @@ async function queueCircleMember(
   });
   seenEmails.add(normalizedEmail);
   return true;
+}
+
+async function resolveCreatedGte(store: ActivityStore, now: Date, maxLookbackMinutes: number) {
+  const watermark = await store.getStripePollWatermark();
+  if (watermark) {
+    return Math.floor(watermark.getTime() / 1000);
+  }
+  return Math.floor((now.getTime() - maxLookbackMinutes * 60 * 1000) / 1000);
 }
 
 async function collect<T extends { id: string }>(iterator: AsyncIterable<T>, cap = 200): Promise<T[]> {
