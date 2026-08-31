@@ -12,6 +12,11 @@ export interface StripeWebhookConfig {
   contractorCircleProductIds: string[];
 }
 
+export interface StripeLookups {
+  listCheckoutLineItems: (sessionId: string) => Promise<unknown[]>;
+  retrieveCustomer: (customerId: string) => Promise<{ email?: string | null; name?: string | null } | undefined>;
+}
+
 export interface StripeWebhookResult {
   status: number;
   body: {
@@ -30,7 +35,7 @@ export async function handleStripeWebhook(input: {
   signature: string | undefined;
   config: StripeWebhookConfig;
   store: ActivityStore;
-  fetchCheckoutLineItems?: (sessionId: string) => Promise<unknown[]>;
+  lookups?: StripeLookups;
 }): Promise<StripeWebhookResult> {
   if (!input.config.webhookSecret) {
     logger.error("STRIPE_WEBHOOK_SECRET is not configured; refusing Stripe webhook.");
@@ -58,22 +63,29 @@ export async function handleStripeWebhook(input: {
     return ignored("Event object missing");
   }
 
-  const ids = await resolvePriceAndProductIds(object, input);
+  const lookups = input.lookups ?? (input.config.secretKey ? createStripeLookups(input.config.secretKey) : undefined);
+  const ids = await resolvePriceAndProductIds(event.type, object, lookups);
   if (!matchesContractorCircle(ids, input.config)) {
-    return ignored("Not a Contractor Circle price or product");
+    return ignored(ids.reason ?? "Not a Contractor Circle price or product");
   }
 
-  const member = extractMemberIdentity(object);
-  if (!member) {
+  const member = await resolveMemberIdentity(object, lookups);
+  if (member?.reason && !member.expectedName && !member.email) {
+    return ignored(member.reason);
+  }
+  if (!member?.expectedName && !member?.email) {
     return ignored("Missing customer name and email");
   }
 
-  const pending = await watchContractorCircleMember(input.store, member);
+  const pending = await watchContractorCircleMember(input.store, {
+    expectedName: member.expectedName || emailLocalPart(member.email) || member.email || "Contractor Circle member",
+    email: member.email,
+  });
   logger.info(`Stripe Contractor Circle purchase queued pending welcome ${pending.id}.`, {
     eventId: event.id,
     eventType: event.type,
     email: member.email,
-    expectedName: member.expectedName,
+    expectedName: pending.expectedName,
   });
 
   return {
@@ -82,11 +94,18 @@ export async function handleStripeWebhook(input: {
   };
 }
 
-export function createCheckoutLineItemFetcher(secretKey: string) {
+export function createStripeLookups(secretKey: string): StripeLookups {
   const stripe = new Stripe(secretKey);
-  return async (sessionId: string) => {
-    const listed = await stripe.checkout.sessions.listLineItems(sessionId, { limit: 100 });
-    return listed.data as unknown[];
+  return {
+    async listCheckoutLineItems(sessionId) {
+      const listed = await stripe.checkout.sessions.listLineItems(sessionId, { limit: 100 });
+      return listed.data as unknown[];
+    },
+    async retrieveCustomer(customerId) {
+      const customer = await stripe.customers.retrieve(customerId);
+      if ("deleted" in customer && customer.deleted) return undefined;
+      return { email: customer.email, name: customer.name };
+    },
   };
 }
 
@@ -99,16 +118,10 @@ export function extractPriceAndProductIds(value: unknown): { priceIds: string[];
 
 export function extractMemberIdentity(object: StripeObject): { expectedName: string; email?: string } | undefined {
   const details = asObject(object.customer_details);
-  const customer = asObject(object.customer);
   const metadata = asObject(object.metadata);
 
-  const email = firstString(
-    details?.email,
-    object.customer_email,
-    customer?.email,
-    metadata?.email,
-  );
-  const name = firstString(details?.name, customer?.name, metadata?.name, object.customer_name);
+  const email = firstString(details?.email, object.customer_email, metadata?.email);
+  const name = firstString(details?.name, metadata?.name, object.customer_name);
 
   if (!name && !email) return undefined;
 
@@ -119,9 +132,12 @@ export function extractMemberIdentity(object: StripeObject): { expectedName: str
 }
 
 function matchesContractorCircle(
-  ids: { priceIds: string[]; productIds: string[] },
+  ids: { priceIds: string[]; productIds: string[]; reason?: string },
   config: StripeWebhookConfig,
 ) {
+  if (ids.reason && !ids.priceIds.length && !ids.productIds.length) {
+    return false;
+  }
   if (!config.contractorCirclePriceIds.length && !config.contractorCircleProductIds.length) {
     logger.warn("Contractor Circle Stripe price/product IDs are not configured; ignoring Stripe events.");
     return false;
@@ -133,30 +149,61 @@ function matchesContractorCircle(
 }
 
 async function resolvePriceAndProductIds(
+  eventType: string,
   object: StripeObject,
-  input: {
-    config: StripeWebhookConfig;
-    fetchCheckoutLineItems?: (sessionId: string) => Promise<unknown[]>;
-  },
-) {
-  const fromPayload = extractPriceAndProductIds(object);
-  if (fromPayload.priceIds.length || fromPayload.productIds.length) {
+  lookups: StripeLookups | undefined,
+): Promise<{ priceIds: string[]; productIds: string[]; reason?: string }> {
+  if (eventType === "checkout.session.completed") {
+    const sessionId = typeof object.id === "string" ? object.id : undefined;
+    if (!sessionId) {
+      return { priceIds: [], productIds: [], reason: "Checkout session id missing" };
+    }
+    if (!lookups?.listCheckoutLineItems) {
+      logger.error("STRIPE_SECRET_KEY is required to retrieve Checkout line items.");
+      return {
+        priceIds: [],
+        productIds: [],
+        reason: "STRIPE_SECRET_KEY is required to identify Checkout line items",
+      };
+    }
+    const lineItems = await lookups.listCheckoutLineItems(sessionId);
+    return extractPriceAndProductIds(lineItems);
+  }
+
+  return extractPriceAndProductIds(object);
+}
+
+async function resolveMemberIdentity(
+  object: StripeObject,
+  lookups: StripeLookups | undefined,
+): Promise<{ expectedName?: string; email?: string; reason?: string } | undefined> {
+  const fromPayload = extractMemberIdentity(object);
+  const payloadName = firstString(asObject(object.customer_details)?.name, object.customer_name);
+  if (fromPayload?.email && payloadName) {
     return fromPayload;
   }
 
-  const sessionId = typeof object.id === "string" && object.object === "checkout.session" ? object.id : undefined;
-  if (!sessionId) return fromPayload;
-
-  const fetcher =
-    input.fetchCheckoutLineItems ||
-    (input.config.secretKey ? createCheckoutLineItemFetcher(input.config.secretKey) : undefined);
-  if (!fetcher) {
-    logger.info("Checkout session has no line items in the event; set STRIPE_SECRET_KEY to retrieve them.");
+  const customerId = typeof object.customer === "string" ? object.customer : undefined;
+  if (!customerId) {
     return fromPayload;
   }
 
-  const lineItems = await fetcher(sessionId);
-  return extractPriceAndProductIds({ line_items: { data: lineItems } });
+  if (!lookups?.retrieveCustomer) {
+    if (fromPayload) return fromPayload;
+    logger.error("STRIPE_SECRET_KEY is required to retrieve Stripe customer identity.");
+    return { reason: "STRIPE_SECRET_KEY is required to retrieve customer identity" };
+  }
+
+  const customer = await lookups.retrieveCustomer(customerId);
+  const email = firstString(fromPayload?.email, customer?.email);
+  const name = firstString(payloadName, customer?.name);
+
+  if (!name && !email) return undefined;
+
+  return {
+    expectedName: name || emailLocalPart(email) || email || "Contractor Circle member",
+    email,
+  };
 }
 
 function collectStripeIds(value: unknown, priceIds: Set<string>, productIds: Set<string>, depth = 0) {

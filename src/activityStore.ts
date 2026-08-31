@@ -12,6 +12,7 @@ import type {
   TargetedPrompt,
 } from "./types.js";
 import { logger } from "./logger.js";
+import { isAllowedWatchKeyword } from "./watchKeywords.js";
 
 const emptyState = (): ActivityStoreState => ({
   users: {},
@@ -446,9 +447,10 @@ function createPendingWelcomeId(value: string) {
 function normalizeKeywords(values: Array<string | undefined>) {
   const keywords = values.flatMap((value) => {
     const normalized = normalizeKeyword(value);
-    return [normalized, normalized.replace(/\s+/g, "")];
+    const tokens = normalized.split(" ").filter(Boolean);
+    return [normalized, normalized.replace(/\s+/g, ""), ...tokens];
   });
-  return [...new Set(keywords.filter((value) => value.length >= 3))];
+  return [...new Set(keywords.filter((value) => isAllowedWatchKeyword(value)))];
 }
 
 function normalizeKeyword(value: string | undefined) {

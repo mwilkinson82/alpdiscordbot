@@ -6,11 +6,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import Stripe from "stripe";
 import { ActivityStore } from "../src/activityStore.js";
 import { config } from "../src/config.js";
+import type { AppConfig } from "../src/config.js";
 import type { ContractorCircleBot } from "../src/discord.js";
 import { watchContractorCircleMember } from "../src/pendingWelcome.js";
 import { createHttpApp } from "../src/server.js";
-import { handleStripeWebhook } from "../src/stripeWebhook.js";
-import type { AppConfig } from "../src/config.js";
+import { handleStripeWebhook, type StripeLookups } from "../src/stripeWebhook.js";
 import type { PendingWelcome } from "../src/types.js";
 
 const dirs: string[] = [];
@@ -20,6 +20,7 @@ const WEBHOOK_SECRET = "whsec_test_contractor_circle";
 const CIRCLE_PRICE_ID = "price_circle";
 const CIRCLE_PRODUCT_ID = "prod_circle";
 const INTENSIVE_PRICE_ID = "price_intensive";
+const INTENSIVE_PRODUCT_ID = "prod_intensive";
 
 afterEach(async () => {
   await Promise.all(closers.splice(0).map((close) => close()));
@@ -29,9 +30,7 @@ afterEach(async () => {
 describe("Stripe Contractor Circle webhook", () => {
   it("rejects missing or invalid Stripe signatures", async () => {
     const ctx = await startTestServer();
-    const payload = JSON.stringify(
-      makeEvent("checkout.session.completed", circleCheckout("Andrew Ernst", "a.ernst@acernst.com")),
-    );
+    const payload = JSON.stringify(makeEvent("checkout.session.completed", productionCheckout()));
 
     const missing = await fetch(`${ctx.baseUrl}/webhooks/stripe`, {
       method: "POST",
@@ -55,47 +54,56 @@ describe("Stripe Contractor Circle webhook", () => {
     expect(await readPendingWelcomes(ctx.dataDir)).toEqual([]);
   });
 
-  it("ignores non-Contractor Circle payments", async () => {
-    const ctx = await startTestServer();
-    const response = await postStripeEvent(
-      ctx.baseUrl,
-      makeEvent("checkout.session.completed", {
-        ...circleCheckout("Pat Intensive", "pat@example.com"),
-        line_items: {
-          object: "list",
-          data: [{ price: { id: INTENSIVE_PRICE_ID, product: "prod_intensive" } }],
-        },
-      }),
-    );
+  it("requires retrieving Checkout line items and ignores non-Circle prices", async () => {
+    const dataDir = await makeDataDir();
+    const store = new ActivityStore(dataDir);
+    const session = productionCheckout("Pat Intensive", "pat@example.com");
+    expect(session).not.toHaveProperty("line_items");
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
+    const result = await handleSignedEvent({
+      store,
+      event: makeEvent("checkout.session.completed", session),
+      lookups: mockLookups({
+        lineItems: [productionLineItem(INTENSIVE_PRICE_ID, INTENSIVE_PRODUCT_ID)],
+      }),
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({
       ok: true,
       ignored: true,
       reason: "Not a Contractor Circle price or product",
     });
-    expect(await readPendingWelcomes(ctx.dataDir)).toEqual([]);
+    expect(await readPendingWelcomes(dataDir)).toEqual([]);
   });
 
-  it("adds a pending welcome from a Contractor Circle checkout", async () => {
-    const ctx = await startTestServer();
-    const response = await postStripeEvent(
-      ctx.baseUrl,
-      makeEvent(
-        "checkout.session.completed",
-        circleCheckout("Andrew Ernst", "a.ernst@acernst.com"),
-      ),
-    );
+  it("adds a pending welcome after retrieving Circle line items from a minimal Checkout session", async () => {
+    const dataDir = await makeDataDir();
+    const store = new ActivityStore(dataDir);
+    const session = productionCheckout("Andrew Ernst", "a.ernst@acernst.com");
+    expect(session).not.toHaveProperty("line_items");
 
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as { ok: boolean; pendingWelcomeId?: string };
-    expect(body.ok).toBe(true);
-    expect(body.pendingWelcomeId).toMatch(/^pending:/);
+    let retrievedSessionId: string | undefined;
+    const result = await handleSignedEvent({
+      store,
+      event: makeEvent("checkout.session.completed", session),
+      lookups: mockLookups({
+        lineItems: (sessionId) => {
+          retrievedSessionId = sessionId;
+          return [productionLineItem(CIRCLE_PRICE_ID, CIRCLE_PRODUCT_ID)];
+        },
+      }),
+    });
 
-    const pendingWelcomes = await readPendingWelcomes(ctx.dataDir);
+    expect(retrievedSessionId).toBe(session.id);
+    expect(result.status).toBe(200);
+    expect(result.body.ok).toBe(true);
+    expect(result.body.pendingWelcomeId).toMatch(/^pending:/);
+
+    const pendingWelcomes = await readPendingWelcomes(dataDir);
     expect(pendingWelcomes).toHaveLength(1);
     expect(pendingWelcomes[0]).toMatchObject({
-      id: body.pendingWelcomeId,
+      id: result.body.pendingWelcomeId,
       expectedName: "Andrew Ernst",
       email: "a.ernst@acernst.com",
       contractorCircleMember: true,
@@ -105,69 +113,104 @@ describe("Stripe Contractor Circle webhook", () => {
       expect.arrayContaining(["andrew ernst", "andrewernst", "aernst", "acernst", "andrew", "ernst"]),
     );
 
-    const match = await ctx.store.pendingWelcomeForMember({
+    const match = await store.pendingWelcomeForMember({
       username: "aernst",
       displayName: "Andrew",
     });
     expect(match?.id).toBe(pendingWelcomes[0]?.id);
   });
 
-  it("retrieves checkout line items when the event omits them", async () => {
+  it("does not treat line_items on the Checkout event as production data", async () => {
     const dataDir = await makeDataDir();
     const store = new ActivityStore(dataDir);
-    const session = circleCheckout("Andrew Ernst", "a.ernst@acernst.com");
-    delete (session as { line_items?: unknown }).line_items;
-    const event = makeEvent("checkout.session.completed", session);
-    const payload = JSON.stringify(event);
-
-    const result = await handleStripeWebhook({
-      rawBody: payload,
-      signature: Stripe.webhooks.generateTestHeaderString({ payload, secret: WEBHOOK_SECRET }),
-      config: {
-        webhookSecret: WEBHOOK_SECRET,
-        contractorCirclePriceIds: [CIRCLE_PRICE_ID],
-        contractorCircleProductIds: [CIRCLE_PRODUCT_ID],
-      },
+    const result = await handleSignedEvent({
       store,
-      fetchCheckoutLineItems: async () => [{ price: { id: CIRCLE_PRICE_ID, product: CIRCLE_PRODUCT_ID } }],
+      event: makeEvent("checkout.session.completed", {
+        ...productionCheckout(),
+        line_items: {
+          object: "list",
+          data: [productionLineItem(CIRCLE_PRICE_ID, CIRCLE_PRODUCT_ID)],
+        },
+      }),
     });
 
     expect(result.status).toBe(200);
-    expect(result.body.ok).toBe(true);
-    expect(result.body.pendingWelcomeId).toMatch(/^pending:/);
+    expect(result.body).toMatchObject({
+      ok: true,
+      ignored: true,
+      reason: "STRIPE_SECRET_KEY is required to identify Checkout line items",
+    });
+    expect(await readPendingWelcomes(dataDir)).toEqual([]);
+  });
+
+  it("retrieves the customer when subscription.created only has a customer id string", async () => {
+    const dataDir = await makeDataDir();
+    const store = new ActivityStore(dataDir);
+    const subscription = productionSubscription("cus_circle_1");
+    expect(typeof subscription.customer).toBe("string");
+    expect(subscription.customer).toBe("cus_circle_1");
+
+    const result = await handleSignedEvent({
+      store,
+      event: makeEvent("customer.subscription.created", subscription),
+      lookups: mockLookups({
+        customers: {
+          cus_circle_1: { name: "Andrew Ernst", email: "a.ernst@acernst.com" },
+        },
+      }),
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ ok: true, pendingWelcomeId: "pending:a-ernst-acernst-com" });
     expect(await readPendingWelcomes(dataDir)).toHaveLength(1);
   });
 
-  it("does not double-add when checkout and subscription events fire for the same email", async () => {
-    const ctx = await startTestServer();
-    const checkout = await postStripeEvent(
-      ctx.baseUrl,
-      makeEvent("checkout.session.completed", circleCheckout("Andrew Ernst", "a.ernst@acernst.com")),
-    );
-    const subscription = await postStripeEvent(
-      ctx.baseUrl,
-      makeEvent("customer.subscription.created", {
-        id: "sub_circle_1",
-        object: "subscription",
+  it("does not use an expanded customer object on the subscription event", async () => {
+    const dataDir = await makeDataDir();
+    const store = new ActivityStore(dataDir);
+    const result = await handleSignedEvent({
+      store,
+      event: makeEvent("customer.subscription.created", {
+        ...productionSubscription("cus_circle_1"),
         customer: {
           id: "cus_circle_1",
           email: "a.ernst@acernst.com",
           name: "Andrew Ernst",
         },
-        items: {
-          object: "list",
-          data: [{ price: { id: CIRCLE_PRICE_ID, product: CIRCLE_PRODUCT_ID } }],
-        },
       }),
-    );
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.body.ok).toBe(true);
+    expect(result.body.ignored).toBe(true);
+    expect(await readPendingWelcomes(dataDir)).toEqual([]);
+  });
+
+  it("does not double-add when checkout and subscription events fire for the same email", async () => {
+    const dataDir = await makeDataDir();
+    const store = new ActivityStore(dataDir);
+    const lookups = mockLookups({
+      lineItems: [productionLineItem(CIRCLE_PRICE_ID, CIRCLE_PRODUCT_ID)],
+      customers: {
+        cus_circle_1: { name: "Andrew Ernst", email: "a.ernst@acernst.com" },
+      },
+    });
+
+    const checkout = await handleSignedEvent({
+      store,
+      lookups,
+      event: makeEvent("checkout.session.completed", productionCheckout("Andrew Ernst", "a.ernst@acernst.com", "cus_circle_1")),
+    });
+    const subscription = await handleSignedEvent({
+      store,
+      lookups,
+      event: makeEvent("customer.subscription.created", productionSubscription("cus_circle_1")),
+    });
 
     expect(checkout.status).toBe(200);
     expect(subscription.status).toBe(200);
-    expect(await subscription.json()).toMatchObject({ ok: true, pendingWelcomeId: "pending:a-ernst-acernst-com" });
-
-    const pendingWelcomes = await readPendingWelcomes(ctx.dataDir);
-    expect(pendingWelcomes).toHaveLength(1);
-    expect(pendingWelcomes[0]?.email).toBe("a.ernst@acernst.com");
+    expect(subscription.body).toMatchObject({ ok: true, pendingWelcomeId: "pending:a-ernst-acernst-com" });
+    expect(await readPendingWelcomes(dataDir)).toHaveLength(1);
   });
 
   it("keeps watch:member as a manual fallback on the same JSON watchlist", async () => {
@@ -175,7 +218,7 @@ describe("Stripe Contractor Circle webhook", () => {
     const store = new ActivityStore(dir);
     const pending = await watchContractorCircleMember(store, {
       expectedName: "Caleb Morrow",
-      email: "caleb@example.com",
+      email: "caleb@acernst.com",
       keywords: ["cmorrow"],
     });
 
@@ -191,6 +234,102 @@ describe("Stripe Contractor Circle webhook", () => {
     expect(match?.id).toBe(pending.id);
   });
 });
+
+async function handleSignedEvent(input: {
+  store: ActivityStore;
+  event: ReturnType<typeof makeEvent>;
+  lookups?: StripeLookups;
+}) {
+  const payload = JSON.stringify(input.event);
+  return handleStripeWebhook({
+    rawBody: payload,
+    signature: Stripe.webhooks.generateTestHeaderString({ payload, secret: WEBHOOK_SECRET }),
+    config: {
+      webhookSecret: WEBHOOK_SECRET,
+      contractorCirclePriceIds: [CIRCLE_PRICE_ID],
+      contractorCircleProductIds: [CIRCLE_PRODUCT_ID],
+    },
+    store: input.store,
+    lookups: input.lookups,
+  });
+}
+
+function mockLookups(options?: {
+  lineItems?: unknown[] | ((sessionId: string) => unknown[]);
+  customers?: Record<string, { email?: string; name?: string }>;
+}): StripeLookups {
+  return {
+    listCheckoutLineItems: async (sessionId) => {
+      const items = options?.lineItems;
+      if (typeof items === "function") return items(sessionId);
+      return items ?? [];
+    },
+    retrieveCustomer: async (customerId) => options?.customers?.[customerId],
+  };
+}
+
+function productionCheckout(name = "Andrew Ernst", email = "a.ernst@acernst.com", customerId = "cus_circle_1") {
+  return {
+    id: `cs_${email.replace(/[^a-z0-9]+/gi, "_")}`,
+    object: "checkout.session",
+    customer: customerId,
+    customer_email: email,
+    customer_details: { email, name },
+    mode: "subscription",
+    payment_status: "paid",
+    status: "complete",
+    subscription: "sub_circle_1",
+  };
+}
+
+function productionSubscription(customerId: string) {
+  return {
+    id: "sub_circle_1",
+    object: "subscription",
+    customer: customerId,
+    items: {
+      object: "list",
+      data: [
+        {
+          id: "si_circle_1",
+          object: "subscription_item",
+          price: {
+            id: CIRCLE_PRICE_ID,
+            object: "price",
+            product: CIRCLE_PRODUCT_ID,
+          },
+        },
+      ],
+    },
+  };
+}
+
+function productionLineItem(priceId: string, productId: string) {
+  return {
+    id: `li_${priceId}`,
+    object: "item",
+    price: {
+      id: priceId,
+      object: "price",
+      product: productId,
+    },
+    quantity: 1,
+  };
+}
+
+function makeEvent(type: string, object: Record<string, unknown>) {
+  return {
+    id: `evt_${type}_${typeof object.id === "string" ? object.id : "x"}`,
+    object: "event",
+    api_version: "2026-01-28.acacia",
+    created: Math.floor(Date.now() / 1000),
+    type,
+    data: { object },
+    livemode: true,
+    pending_webhooks: 1,
+    request: { id: null, idempotency_key: null },
+  };
+}
 
 async function startTestServer() {
   const dataDir = await makeDataDir();
@@ -211,52 +350,6 @@ function testConfig(): AppConfig {
       contractorCircleProductIds: [CIRCLE_PRODUCT_ID],
     },
   };
-}
-
-function circleCheckout(name: string, email: string) {
-  return {
-    id: `cs_${email.replace(/[^a-z0-9]+/gi, "_")}`,
-    object: "checkout.session",
-    customer_email: email,
-    customer_details: { email, name },
-    mode: "subscription",
-    payment_status: "paid",
-    status: "complete",
-    line_items: {
-      object: "list",
-      data: [{ price: { id: CIRCLE_PRICE_ID, product: CIRCLE_PRODUCT_ID } }],
-    },
-  };
-}
-
-function makeEvent(type: string, object: Record<string, unknown>) {
-  return {
-    id: `evt_${type}_${typeof object.id === "string" ? object.id : "x"}`,
-    object: "event",
-    api_version: "2026-01-28.acacia",
-    created: Math.floor(Date.now() / 1000),
-    type,
-    data: { object },
-    livemode: true,
-    pending_webhooks: 1,
-    request: { id: null, idempotency_key: null },
-  };
-}
-
-async function postStripeEvent(baseUrl: string, event: ReturnType<typeof makeEvent>) {
-  const payload = JSON.stringify(event);
-  const signature = Stripe.webhooks.generateTestHeaderString({
-    payload,
-    secret: WEBHOOK_SECRET,
-  });
-  return fetch(`${baseUrl}/webhooks/stripe`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "stripe-signature": signature,
-    },
-    body: payload,
-  });
 }
 
 async function readPendingWelcomes(dataDir: string): Promise<PendingWelcome[]> {

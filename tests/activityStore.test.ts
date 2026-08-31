@@ -113,4 +113,31 @@ describe("ActivityStore quiz and activity tracking", () => {
 
     expect(match?.id).toBe(pending.id);
   });
+
+  it("does not match public email domains or TLDs from rachel@gmail.com", async () => {
+    const store = await makeStore();
+    const pending = await store.recordPendingWelcome({
+      expectedName: "Rachel Stone",
+      email: "rachel@gmail.com",
+      keywords: [],
+      contractorCircleMember: true,
+    });
+
+    expect(pending.keywords).not.toContain("gmail");
+    expect(pending.keywords).not.toContain("com");
+
+    expect(
+      await store.pendingWelcomeForMember({
+        username: "rachel",
+        displayName: "Rachel",
+      }),
+    ).toMatchObject({ id: pending.id });
+
+    expect(
+      await store.pendingWelcomeForMember({
+        username: "comfort",
+        displayName: "Company",
+      }),
+    ).toBeUndefined();
+  });
 });

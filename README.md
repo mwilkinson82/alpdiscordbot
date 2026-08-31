@@ -120,7 +120,7 @@ Point a webhook from the **ALPio live** Stripe account (not Overwatch) at the bo
 3. Listen to `checkout.session.completed`. Optionally also `customer.subscription.created` (the bot dedups the same customer/email so both events do not double-add)
 4. Copy the endpoint signing secret into `STRIPE_WEBHOOK_SECRET`. Production events without a valid `Stripe-Signature` are rejected
 5. Set `STRIPE_CONTRACTOR_CIRCLE_PRICE_ID` to the Contractor Circle price ID (`price_...`) from the ALPio Products page. If Circle has more than one price (monthly/annual), comma-separate them. You can set `STRIPE_CONTRACTOR_CIRCLE_PRODUCT_ID` (`prod_...`) instead of or in addition to the price ID
-6. Optional: set `STRIPE_SECRET_KEY` so Checkout sessions that omit `line_items` in the webhook payload can still be identified. The bot never matches by amount
+6. Set `STRIPE_SECRET_KEY` to a restricted key that can read Checkout Sessions and Customers (`checkout.sessions.read`, `customers.read`). Checkout `checkout.session.completed` payloads do not include `line_items`; the bot always retrieves them. `customer.subscription.created` sends `customer` as a `cus_...` id, so the bot retrieves the customer for name/email. The bot never matches by amount
 
 Other ALPio products (intensives, etc.) are ignored unless their price/product ID is listed in those env vars.
 

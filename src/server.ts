@@ -4,7 +4,7 @@ import type { ActivityStore } from "./activityStore.js";
 import type { AppConfig } from "./config.js";
 import type { ContractorCircleBot } from "./discord.js";
 import { logger } from "./logger.js";
-import { handleStripeWebhook } from "./stripeWebhook.js";
+import { handleStripeWebhook, type StripeLookups } from "./stripeWebhook.js";
 
 const callRecapSchema = z.object({
   title: z.string().optional(),
@@ -27,7 +27,12 @@ const quizSchema = z.object({
   channelId: z.string().optional(),
 });
 
-export function createHttpApp(appConfig: AppConfig, bot: ContractorCircleBot, store: ActivityStore) {
+export function createHttpApp(
+  appConfig: AppConfig,
+  bot: ContractorCircleBot,
+  store: ActivityStore,
+  lookups?: StripeLookups,
+) {
   const app = express();
 
   app.post("/webhooks/stripe", express.raw({ type: "application/json" }), async (req, res) => {
@@ -37,6 +42,7 @@ export function createHttpApp(appConfig: AppConfig, bot: ContractorCircleBot, st
         signature: req.header("stripe-signature") || undefined,
         config: appConfig.stripe,
         store,
+        lookups,
       });
       res.status(result.status).json(result.body);
     } catch (error: any) {
