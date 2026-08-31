@@ -1,0 +1,17 @@
+{
+  "name": "ALP Discord Bot",
+  "install": "npm ci",
+  "ports": [
+    {
+      "name": "webhooks",
+      "port": 8787
+    }
+  ],
+  "terminals": [
+    {
+      "name": "dev",
+      "command": "npm run dev",
+      "description": "Runs the bot with tsx watch (src/index.ts). Starts the webhook HTTP server on PORT (default 8787) and connects the Discord gateway when DISCORD_BOT_TOKEN is set; without a token it logs a warning and serves HTTP only."
+    }
+  ]
+}
