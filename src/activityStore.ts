@@ -268,6 +268,16 @@ export class ActivityStore {
     await this.save();
   }
 
+  async findPendingWelcomeByEmail(email: string): Promise<PendingWelcome | undefined> {
+    await this.load();
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) return undefined;
+    const id = createPendingWelcomeId(email);
+    return this.state.pendingWelcomes.find((item) => {
+      return item.id === id || item.email?.trim().toLowerCase() === normalized;
+    });
+  }
+
   async recordQuiz(input: Omit<QuizQuestion, "createdAt" | "expiresAt"> & { ttlHours: number; at?: Date }) {
     await this.load();
     const now = input.at ?? new Date();

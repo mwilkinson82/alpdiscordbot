@@ -4,6 +4,7 @@ import type { AppConfig } from "./config.js";
 import { isWeekend } from "./dateUtils.js";
 import { logger } from "./logger.js";
 import type { ActivityStore } from "./activityStore.js";
+import { runScheduledStripePoll } from "./stripePoller.js";
 
 export function startScheduler(appConfig: AppConfig, bot: ContractorCircleBot, store: ActivityStore) {
   const tasks: Array<ReturnType<typeof cron.schedule>> = [];
@@ -41,9 +42,23 @@ export function startScheduler(appConfig: AppConfig, bot: ContractorCircleBot, s
     );
   }
 
+  const pollMinutes = appConfig.stripe.pollMinutes;
+  const stripePollExpression = `*/${pollMinutes} * * * *`;
+  tasks.push(
+    cron.schedule(
+      stripePollExpression,
+      () => {
+        void runScheduledStripePoll(appConfig, store);
+      },
+      { timezone: appConfig.schedule.timezone },
+    ),
+  );
+  void runScheduledStripePoll(appConfig, store);
+
   logger.info("Scheduler started.", {
     morningExpression,
     daytimePromptHours: appConfig.schedule.daytimePromptHours,
+    stripePollExpression,
     timezone: appConfig.schedule.timezone,
   });
 

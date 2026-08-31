@@ -1,6 +1,7 @@
 import { config as loadEnv } from "dotenv";
 import { z } from "zod";
 import type { LogLevel } from "./types.js";
+import { resolveContractorCircleIds } from "./stripeCircle.js";
 
 loadEnv({ path: ".env.local", quiet: true });
 loadEnv({ quiet: true });
@@ -31,6 +32,8 @@ const envSchema = z.object({
   STRIPE_SECRET_KEY: z.string().optional().default(""),
   STRIPE_CONTRACTOR_CIRCLE_PRICE_ID: z.string().optional().default(""),
   STRIPE_CONTRACTOR_CIRCLE_PRODUCT_ID: z.string().optional().default(""),
+  STRIPE_POLL_MINUTES: z.coerce.number().int().min(1).max(60).default(5),
+  STRIPE_POLL_LOOKBACK_MINUTES: z.coerce.number().int().positive().default(180),
   TIMEZONE: z.string().min(1).default("America/New_York"),
   MORNING_POST_HOUR: z.coerce.number().int().min(0).max(23).default(8),
   DAYTIME_PROMPT_HOURS: z.string().optional().default("10,13,16"),
@@ -65,6 +68,10 @@ function hours(value: string) {
 }
 
 const parsed = envSchema.parse(process.env);
+const contractorCircleIds = resolveContractorCircleIds(
+  csv(parsed.STRIPE_CONTRACTOR_CIRCLE_PRICE_ID),
+  csv(parsed.STRIPE_CONTRACTOR_CIRCLE_PRODUCT_ID),
+);
 
 export const config = {
   discord: {
@@ -92,8 +99,10 @@ export const config = {
   stripe: {
     webhookSecret: parsed.STRIPE_WEBHOOK_SECRET,
     secretKey: parsed.STRIPE_SECRET_KEY,
-    contractorCirclePriceIds: csv(parsed.STRIPE_CONTRACTOR_CIRCLE_PRICE_ID),
-    contractorCircleProductIds: csv(parsed.STRIPE_CONTRACTOR_CIRCLE_PRODUCT_ID),
+    contractorCirclePriceIds: contractorCircleIds.priceIds,
+    contractorCircleProductIds: contractorCircleIds.productIds,
+    pollMinutes: parsed.STRIPE_POLL_MINUTES,
+    lookbackMinutes: parsed.STRIPE_POLL_LOOKBACK_MINUTES,
   },
   schedule: {
     timezone: parsed.TIMEZONE,

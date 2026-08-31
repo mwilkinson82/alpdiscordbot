@@ -344,6 +344,7 @@ function testConfig(): AppConfig {
   return {
     ...config,
     stripe: {
+      ...config.stripe,
       webhookSecret: WEBHOOK_SECRET,
       secretKey: "",
       contractorCirclePriceIds: [CIRCLE_PRICE_ID],

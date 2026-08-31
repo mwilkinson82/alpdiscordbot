@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import type { ActivityStore } from "./activityStore.js";
 import { logger } from "./logger.js";
 import { watchContractorCircleMember } from "./pendingWelcome.js";
+import { purchaseMatchesContractorCircle } from "./stripeCircle.js";
 
 const HANDLED_EVENT_TYPES = new Set(["checkout.session.completed", "customer.subscription.created"]);
 
@@ -65,7 +66,10 @@ export async function handleStripeWebhook(input: {
 
   const lookups = input.lookups ?? (input.config.secretKey ? createStripeLookups(input.config.secretKey) : undefined);
   const ids = await resolvePriceAndProductIds(event.type, object, lookups);
-  if (!matchesContractorCircle(ids, input.config)) {
+  if (!purchaseMatchesContractorCircle(ids, {
+    priceIds: input.config.contractorCirclePriceIds,
+    productIds: input.config.contractorCircleProductIds,
+  })) {
     return ignored(ids.reason ?? "Not a Contractor Circle price or product");
   }
 
@@ -129,23 +133,6 @@ export function extractMemberIdentity(object: StripeObject): { expectedName: str
     expectedName: name || emailLocalPart(email) || email || "Contractor Circle member",
     email,
   };
-}
-
-function matchesContractorCircle(
-  ids: { priceIds: string[]; productIds: string[]; reason?: string },
-  config: StripeWebhookConfig,
-) {
-  if (ids.reason && !ids.priceIds.length && !ids.productIds.length) {
-    return false;
-  }
-  if (!config.contractorCirclePriceIds.length && !config.contractorCircleProductIds.length) {
-    logger.warn("Contractor Circle Stripe price/product IDs are not configured; ignoring Stripe events.");
-    return false;
-  }
-
-  const priceSet = new Set(config.contractorCirclePriceIds);
-  const productSet = new Set(config.contractorCircleProductIds);
-  return ids.priceIds.some((id) => priceSet.has(id)) || ids.productIds.some((id) => productSet.has(id));
 }
 
 async function resolvePriceAndProductIds(

@@ -111,18 +111,19 @@ If the target member responds in that channel within the configured response win
 
 Pending welcomes live in the local JSON activity store (`DATA_DIR/activity.json`). Discord does not expose email on join, so the bot matches username/display-name fragments. On match, the existing join flow welcomes the member and grants the Contractor Circle role.
 
-### Stripe webhook (automatic)
+### Stripe poller (this Mac)
 
-Point a webhook from the **ALPio live** Stripe account (not Overwatch) at the bot:
+This bot runs locally (LaunchAgent, `localhost:8787` only) and has no public URL. It does **not** depend on inbound Stripe webhooks.
 
-1. Stripe Dashboard → Developers → Webhooks → Add endpoint
-2. Endpoint URL: `https://<bot-host>/webhooks/stripe`
-3. Listen to `checkout.session.completed`. Optionally also `customer.subscription.created` (the bot dedups the same customer/email so both events do not double-add)
-4. Copy the endpoint signing secret into `STRIPE_WEBHOOK_SECRET`. Production events without a valid `Stripe-Signature` are rejected
-5. Set `STRIPE_CONTRACTOR_CIRCLE_PRICE_ID` to the Contractor Circle price ID (`price_...`) from the ALPio Products page. If Circle has more than one price (monthly/annual), comma-separate them. You can set `STRIPE_CONTRACTOR_CIRCLE_PRODUCT_ID` (`prod_...`) instead of or in addition to the price ID
-6. Set `STRIPE_SECRET_KEY` to a restricted key that can read Checkout Sessions and Customers (`checkout.sessions.read`, `customers.read`). Checkout `checkout.session.completed` payloads do not include `line_items`; the bot always retrieves them. `customer.subscription.created` sends `customer` as a `cus_...` id, so the bot retrieves the customer for name/email. The bot never matches by amount
+Every few minutes the scheduler polls the **ALPio live** Stripe account (not Overwatch) for new Contractor Circle purchases and writes them to the same pending-welcome list.
 
-Other ALPio products (intensives, etc.) are ignored unless their price/product ID is listed in those env vars.
+1. Set `STRIPE_SECRET_KEY` to a restricted key with `checkout.sessions.read`, `customers.read`, and `subscriptions.read`. If this is missing, the poll is skipped (logged once) and the Discord gateway keeps running.
+2. Circle identifiers default to product `prod_UhuaYXyzDSknXg` and price `price_1TiUlGJdDAUSVXbNQRjv1ntA`. Override with `STRIPE_CONTRACTOR_CIRCLE_PRICE_ID` / `STRIPE_CONTRACTOR_CIRCLE_PRODUCT_ID` only if those change. A Mac `.env.local` can work with just `STRIPE_SECRET_KEY`.
+3. Optional: `STRIPE_POLL_MINUTES` (default 5) and `STRIPE_POLL_LOOKBACK_MINUTES` (default 180).
+
+Intensives and other ALPio products are ignored. The same email is not double-added (`pending:{normalized-email}`), including after the member has already been welcomed. Public email domains/TLDs are not used as Discord match keywords.
+
+`POST /webhooks/stripe` remains available for a future public host. It is not required on this machine.
 
 ### Manual fallback
 
@@ -132,7 +133,7 @@ Other ALPio products (intensives, etc.) are ignored unless their price/product I
 npm run watch:member -- "Andrew Ernst" a.ernst@acernst.com aernst acernst
 ```
 
-The CLI writes to the same pending-welcome list as the Stripe webhook. Extra keyword fragments are optional; name and email are turned into username/display-name fragments automatically.
+The CLI writes to the same pending-welcome list as the Stripe poller. Extra keyword fragments are optional; name and email are turned into username/display-name fragments automatically.
 
 ## Quiz Webhook
 
